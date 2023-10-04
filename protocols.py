@@ -66,11 +66,11 @@ class Policy(Protocol[ObsType, ActType]):
         ...
 
 
-class ActionCompatibility(Protocol[AbsActType, ObsType, ActType]):
+class ActionCompatibility(Protocol[ObsType, ActType]):
     def __call__(
         self,
-        comand: AbsActType,
-        transition: AbsTransition[ObsType, AbsObsType, ActType],
+        comand: ActType,
+        transition: Transition[ObsType, ActType],
     ) -> float:
         ...
 
@@ -93,8 +93,8 @@ class DynamicPolicy(Protocol[AbsActType, ObsType, ActType]):
 
     def train(
         self,
-        transitions: Sequence[Transition[ObsType, ActType]],
-        reward_generator: ActionCompatibility[AbsActType, ObsType, ActType],
+        transitions: Sequence[Transition[tuple[ObsType, AbsObsType], ActType]],
+        reward_generator: ActionCompatibility[AbsObsType, AbsActType],
         emphasis: Callable[[AbsActType], float] = lambda _: 1.0,
     ) -> None:
         ...

@@ -14,7 +14,6 @@ ActType = TypeVar("ActType")
 
 @dataclass(frozen=True, eq=False)
 class RandomPolicy(Policy[Any, ActType]):
-    observation_space: InitVar[spaces.Space[Any]]
     action_space: spaces.Space[ActType]
 
     def set_exploration_rate(self, exploration_rate: float):
