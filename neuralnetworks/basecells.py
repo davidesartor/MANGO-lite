@@ -1,6 +1,7 @@
 from typing import Any, Sequence
 import torch
 from torch import nn
+from .lazymodules import LazyConvNd, LazyBatchNormNd
 
 
 class Squeeze(nn.Module):
@@ -15,163 +16,122 @@ class Squeeze(nn.Module):
         return y
 
 
-class Unsqueeze(nn.Module):
-    def __init__(self, dim: int):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.unsqueeze(x, dim=self.dim)
-
-
 class LinearCell(nn.Sequential):
+    """A fully connected layer
+    preeceded by batch norm (optional)
+    and followed by activation function (optional)
+    """
+
     def __init__(
         self,
-        in_features: int,
+        in_features: int | None,
         out_features: int,
         activation: nn.Module | None = nn.ReLU(),
         batch_norm: bool = True,
-        **kwargs,  # arguments fowarded to torch.nn.Linear call
+        bias: bool = True,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
-        layers = []
-        if batch_norm:
-            layers.append(nn.BatchNorm1d(in_features))
-        layers.append(nn.Linear(in_features, out_features, **kwargs))
-        if activation is not None:
-            layers.append(activation)
-        super().__init__(*layers)
+        super().__init__()
+        factory_params = {"device": device, "dtype": dtype}
 
+        if in_features:
+            if batch_norm:
+                self.append(nn.BatchNorm1d(in_features, **factory_params))
 
-class LazyLinearCell(nn.Sequential):
-    def __init__(
-        self,
-        out_features: int,
-        activation: nn.Module | None = nn.ReLU(),
-        batch_norm: bool = True,
-        **kwargs,  # arguments fowarded to torch.nn.Linear call
-    ):
-        layers = []
-        if batch_norm:
-            layers.append(nn.LazyBatchNorm1d())
-        layers.append(torch.nn.LazyLinear(out_features, **kwargs))
-        if activation is not None:
-            layers.append(activation)
-        super().__init__(*layers)
+            self.append(nn.Linear(in_features, out_features, bias, **factory_params))
 
-
-class ConvCell(torch.nn.Sequential):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int | tuple[int, int] | tuple[int, int, int] = (3, 3),
-        activation: torch.nn.Module | None = torch.nn.ReLU(),
-        pooling_params: dict[str, Any] | None = {"kernel_size": 2, "stride": 2},
-        batch_norm: bool = True,
-        **kwargs,  # arguments fowarded to torch.nn.ConvXd call
-    ):
-        layers = []
-
-        if isinstance(kernel_size, int):
-            bn = nn.BatchNorm1d(in_channels)
-            conv = nn.Conv1d(in_channels, out_channels, kernel_size, **kwargs)
-            pl = nn.MaxPool1d(**pooling_params) if pooling_params else None
-        elif len(kernel_size) == 2:
-            bn = nn.BatchNorm2d(in_channels)
-            conv = nn.Conv2d(in_channels, out_channels, kernel_size, **kwargs)
-            pl = nn.MaxPool2d(**pooling_params) if pooling_params else None
-        elif len(kernel_size) == 3:
-            bn = nn.BatchNorm3d(in_channels)
-            conv = nn.Conv3d(in_channels, out_channels, kernel_size, **kwargs)
-            pl = nn.MaxPool3d(**pooling_params) if pooling_params else None
+            if activation is not None:
+                self.append(activation)
         else:
-            raise ValueError(f"Invalid kernel dimension: {kernel_size}")
+            if batch_norm:
+                self.append(nn.LazyBatchNorm1d(**factory_params))
 
-        if batch_norm:
-            layers.append(bn)
-        layers.append(conv)
-        if pooling_params is not None:
-            layers.append(pl)
-        if activation is not None:
-            layers.append(activation)
+            self.append(nn.LazyLinear(out_features, bias, **factory_params))
 
-        super().__init__(*layers)
+            if activation is not None:
+                self.append(activation)
 
 
-class LazyConvCell(torch.nn.Sequential):
+class ConvCell(nn.Sequential):
+    """A convolutional connected layer
+    preeceded by batch norm (optional)
+    and followed by activation function (optional)
+    """
+
     def __init__(
         self,
+        in_channels: int | None,
         out_channels: int,
-        kernel_size: int | tuple[int, int, int] = 3,
-        activation: torch.nn.Module | None = torch.nn.ReLU(),
-        pooling_params: dict[str, Any] | None = {"kernel_size": 2, "stride": 2},
+        kernel_size: int = 3,
+        activation: nn.Module | None = nn.ReLU(),
         batch_norm: bool = True,
-        **kwargs,  # arguments fowarded to torch.nn.ConvXd call
+        conv_dim: int | None = None,
+        stride: int = 1,
+        padding: int | str = "same",
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
-        self.initialization_params = {
-            "out_channels": out_channels,
+        super().__init__()
+        factory_params = {"device": device, "dtype": dtype}
+        conv_params = {
             "kernel_size": kernel_size,
-            "activation": activation,
-            "pooling_params": pooling_params,
-            "batch_norm": batch_norm,
-            "kwargs": kwargs,
+            "stride": stride,
+            "padding": padding,
+            "dilation": dilation,
+            "groups": groups,
+            "bias": bias,
         }
-        
-    class SqueezedDimError(ValueError):
-            pass
 
-    def lazy_init(
-        self,
-        first_input: torch.Tensor,
-        out_channels: int,
-        kernel_size: int | tuple[int, int, int] = 3,
-        activation: torch.nn.Module | None = torch.nn.ReLU(),
-        pooling_params: dict[str, Any] | None = {"kernel_size": 2, "stride": 2},
-        batch_norm: bool = True,
-        **kwargs,
-    ):
-        layers = []
+        if not conv_dim or not in_channels:
+            if batch_norm:
+                self.append(LazyBatchNormNd(**factory_params))
+            self.append(LazyConvNd(out_channels, **conv_params, **factory_params))
+            if activation is not None:
+                self.append(activation)
 
-        squeeze_layer = Squeeze()
-        layers.append(squeeze_layer)
+        elif conv_dim == 1:
+            if batch_norm:
+                self.append(nn.BatchNorm1d(in_channels, **factory_params))
+            self.append(
+                nn.Conv1d(in_channels, out_channels, **conv_params, **factory_params)
+            )
+            if activation is not None:
+                self.append(activation)
 
-        squeezed_dim = squeeze_layer(first_input).ndim
-        if first_input.shape[1] == 1:
-            squeezed_dim += 1
-            layers.append(Unsqueeze(0))
+        elif conv_dim == 2:
+            if batch_norm:
+                self.append(nn.BatchNorm2d(in_channels, **factory_params))
+            self.append(
+                nn.Conv2d(in_channels, out_channels, **conv_params, **factory_params)
+            )
+            if activation is not None:
+                self.append(activation)
 
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size, kernel_size, kernel_size)
-            
-        
+        elif conv_dim == 3:
+            if batch_norm:
+                self.append(nn.BatchNorm3d(in_channels, **factory_params))
+            self.append(
+                nn.Conv3d(in_channels, out_channels, **conv_params, **factory_params)
+            )
+            if activation is not None:
+                self.append(activation)
 
-        if squeezed_dim == 2:
-            bn = nn.LazyBatchNorm1d()
-            conv = nn.LazyConv1d(out_channels, kernel_size[0], **kwargs)
-            pl = nn.MaxPool1d(**pooling_params) if pooling_params else None
-        elif squeezed_dim == 3:
-            bn = nn.LazyBatchNorm2d()
-            conv = nn.LazyConv2d(out_channels, kernel_size[:2], **kwargs)
-            pl = nn.MaxPool2d(**pooling_params) if pooling_params else None
-        elif squeezed_dim == 4:
-            bn = nn.LazyBatchNorm3d()
-            conv = nn.LazyConv3d(out_channels, kernel_size, **kwargs)
-            pl = nn.MaxPool3d(**pooling_params) if pooling_params else None
         else:
-            raise self.SqueezedDimError(f"Invalid (squeezed) input dimension: ", squeezed_dim)
+            raise ValueError(f"conv_dim {conv_dim} not supported")
 
-        if batch_norm:
-            layers.append(bn)
-        layers.append(conv)
-        if pooling_params is not None:
-            layers.append(pl)
-        if activation is not None:
-            layers.append(activation)
 
-        super().__init__(*layers)
+class ResConvCell(ConvCell):
+    """A residual convolutional connected layer
+    preeceded by batch norm (optional)
+    and followed by activation function (optional)
+    """
+
+    def __init__(self, *args, padding="same", **kwargs):
+        super().__init__(*args, padding="same", **kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.initialization_params is not None:
-            self.lazy_init(x, **self.initialization_params)
-            self.initialization_params = None
-        return super().forward(x)
+        return super().forward(x) + x

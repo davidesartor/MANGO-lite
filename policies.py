@@ -1,28 +1,37 @@
 from dataclasses import InitVar, dataclass, field
-from typing import Any, Sequence, TypeVar
+from typing import Any, Protocol, Sequence, TypeVar
 import copy
 import numpy as np
 import torch
 
 from . import spaces
 from .neuralnetworks.networks import LazyConvEncoder
-from .protocols import Policy, Transition
+from .utils import Transition
 
 ObsType = TypeVar("ObsType")
 ActType = TypeVar("ActType")
 
 
-@dataclass(frozen=True, eq=False)
+@dataclass(slots=True, eq=False)
+class Policy(Protocol[ObsType, ActType]):
+    action_space: spaces.Space[ActType]
+    exploration_rate: float = 1.0
+
+    def get_action(self, state: ObsType) -> ActType:
+        ...
+
+    def train(self, transitions: Sequence[Transition[ObsType, ActType]]):
+        ...
+
+
+@dataclass(eq=False)
 class RandomPolicy(Policy[Any, ActType]):
     action_space: spaces.Space[ActType]
-
-    def set_exploration_rate(self, exploration_rate: float):
-        pass
-
+    
     def get_action(self, state: Any) -> ActType:
         return self.action_space.sample()
 
-    def train(self, transitions: Sequence[Transition]):
+    def train(self, transitions: Sequence[Transition[Any, ActType]]):
         pass
 
 
@@ -31,11 +40,9 @@ Array3d = np.ndarray[tuple[int, int, int], Any]
 
 @dataclass(eq=False, repr=False)
 class DQnetPolicy(Policy[Array3d, int]):
-    observation_space: spaces.Box
     action_space: spaces.Discrete
 
     loss_function = torch.nn.SmoothL1Loss()
-    exploration_rate = 1.0
     gamma: float = 0.99
     train_cycles: int = 1
     refresh_timer: tuple[int, int] = (0, 10)
@@ -46,19 +53,9 @@ class DQnetPolicy(Policy[Array3d, int]):
     optimizer: torch.optim.Optimizer = field(init=False)
 
     def __post_init__(self):
-        squeezed_dim = torch.zeros(self.observation_space.shape).squeeze().ndim
-        if self.observation_space.shape[0] == 1:
-            squeezed_dim += 1
-
-        kernel_size = (3,) * (len(self.observation_space.shape) - 1)
-        self.net = LazyConvEncoder(
-            in_shape=self.observation_space.shape, out_features=int(self.action_space.n)
-        )
+        self.net = LazyConvEncoder(out_features=int(self.action_space.n))
         self.optimizer = torch.optim.Adam(params=self.net.parameters(recurse=True))
         self.target_net = copy.deepcopy(self.net)
-
-    def set_exploration_rate(self, exploration_rate: float):
-        self.exploration_rate = exploration_rate + 1e-8
 
     def get_action(self, state: Array3d) -> int:
         self.net.eval()

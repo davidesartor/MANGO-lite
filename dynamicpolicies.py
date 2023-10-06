@@ -1,14 +1,38 @@
 from dataclasses import InitVar, dataclass, field
-from typing import Any, Sequence, TypeVar, Callable, Iterable, Optional
+from typing import Any, Protocol, Sequence, TypeVar, Callable, Iterable, Optional
 
 import numpy as np
+from gymnasium import spaces
 
-from . import spaces
-from .protocols import Policy, DynamicPolicy, ActionCompatibility, Transition
-from .policies import DQnetPolicy
+from .policies import Policy, DQnetPolicy
+from .utils import Transition
+
+
+ObsType = TypeVar("ObsType")
+AbsObsType = TypeVar("AbsObsType")
+ActType = TypeVar("ActType")
+AbsActType = TypeVar("AbsActType")
+
+
+class DynamicPolicy(Policy[ObsType, ActType], Protocol[AbsActType, ObsType, ActType]):
+    @property
+    def command_space(self) -> spaces.Space[AbsActType]:
+        ...
+
+    def get_action(self, comand: AbsActType, state: ObsType) -> ActType:
+        ...
+
+    def train(
+        self,
+        transitions: Sequence[Transition[tuple[ObsType, AbsObsType], ActType]],
+        reward_generator: ActionCompatibility[AbsObsType, AbsActType],
+        emphasis: Callable[[AbsActType], float] = lambda _: 1.0,
+    ) -> None:
+        ...
+
+
 
 Array3d = np.ndarray[tuple[int, int, int], Any]
-
 
 @dataclass(eq=False)
 class DQnetPolicyMapper(DynamicPolicy[int, Array3d, int]):

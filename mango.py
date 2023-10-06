@@ -3,7 +3,7 @@ from typing import Any, Generic, TypeVar
 import numpy as np
 
 from . dynamicpolicies import DQnetPolicyMapper
-from . protocols import Concept, Environment
+from .utils import Concept, Environment
 
 
 ObsType = TypeVar("ObsType")
