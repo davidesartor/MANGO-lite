@@ -1,8 +1,11 @@
 from typing import Any, Mapping, Protocol, Sequence, TypeVar
 from dataclasses import dataclass
 
+from gymnasium import spaces
+
 ObsType = TypeVar("ObsType")
 AbsObsType = TypeVar("AbsObsType")
+AbsActType = TypeVar("AbsActType")
 
 
 class Concept(Protocol[ObsType, AbsObsType]):
@@ -11,6 +14,24 @@ class Concept(Protocol[ObsType, AbsObsType]):
         return self.__class__.__name__
 
     def abstract(self, observation: ObsType) -> AbsObsType:
+        ...
+
+
+class ExtendedConcept(Protocol[ObsType, AbsObsType, AbsActType]):
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
+
+    @property
+    def comand_space(self) -> spaces.Space[AbsActType]:
+        ...
+
+    def abstract(self, observation: ObsType) -> AbsObsType:
+        ...
+
+    def compatibility(
+        self, comand: AbsActType, start_state: AbsObsType, next_state: AbsObsType
+    ) -> float:
         ...
 
 
@@ -36,7 +57,7 @@ class Strip(Concept[Mapping[str, Any], ObsType]):
             output_state = input_state
             for key in self.keys:
                 output_state = output_state[key]
-            return output_state # type: ignore
+            return output_state  # type: ignore
         except KeyError:
             raise KeyError(
                 f"Abstraction failed: {input_state} missing keys {self.keys}."
