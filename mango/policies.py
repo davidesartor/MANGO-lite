@@ -55,8 +55,10 @@ class DQnetPolicy(Policy[npt.NDArray, int]):
 
     def __post_init__(self):
         self.net = ConvEncoder(in_channels=None, out_features=int(self.action_space.n))
+        self.target_net = ConvEncoder(
+            in_channels=None, out_features=int(self.action_space.n)
+        )
         self.optimizer = torch.optim.Adam(params=self.net.parameters(recurse=True))
-        self.target_net = copy.deepcopy(self.net)
 
     def get_action(self, state: npt.NDArray) -> int:
         self.net.eval()

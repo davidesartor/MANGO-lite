@@ -40,7 +40,7 @@ class DQnetPolicyMapper(DynamicPolicy[int, npt.NDArray, int]):
     comand_space: spaces.Discrete
     action_space: spaces.Discrete
 
-    exploration_rate: float = field(init=False, default=1.0)
+    exploration_rate: float = field(init=False, default=1.0, repr=False)
     policies: dict[int, Policy[npt.NDArray, int]] = field(init=False, repr=False)
 
     def __post_init__(self):

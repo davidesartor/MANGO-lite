@@ -14,9 +14,9 @@ from .environments import Environment
 ObsType = TypeVar("ObsType")
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, slots=True, repr=False)
 class Mango(Generic[ObsType]):
-    environment: Environment[ObsType, int] = field(repr=False)
+    environment: Environment[ObsType, int]
     concepts: list[ExtendedConcept[ObsType, npt.NDArray, int]]
     base_concept: Concept[ObsType, npt.NDArray] = IdentityConcept()
 
@@ -50,3 +50,19 @@ class Mango(Generic[ObsType]):
 
     def reset(self) -> None:
         ...
+
+    def __repr__(self) -> str:
+        representation = f"Mango(\n"
+        representation += f"    (env): {self.environment},\n"
+        representation += f"    (options): \n"
+        for i, option in enumerate(self.option_space):
+            representation += f"        ({i}): {option},\n"
+        representation += f"    (concepts): \n"
+        representation += f"        (base): {self.base_concept},\n"
+        for i, concept in enumerate(self.concepts):
+            representation += f"        ({i+1}): {concept},\n"
+        representation += f"    (policies): \n"
+        for i, policy in enumerate(self.intralayer_policies):
+            representation += f"        ({i}): {policy},\n"
+        representation += f")"
+        return representation

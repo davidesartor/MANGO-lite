@@ -30,9 +30,9 @@ class Environment(Protocol[ObsType, ActType]):
         ...
 
 
+@dataclass(eq=False, slots=True)
 class DummyEnvironment(Environment):
-    def __init__(self) -> None:
-        self.reset()
+    state: int = 0
 
     @property
     def observation_space(self) -> spaces.Discrete:
