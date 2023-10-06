@@ -1,10 +1,11 @@
 from __future__ import annotations
-from dataclasses import dataclass, astuple
-from typing import Any, Callable, Iterable, Optional, Protocol, Sequence, TypeVar
+from dataclasses import dataclass, field, astuple
+from typing import Any, Generic, Iterable, Optional, Protocol, Sequence, TypeVar
 from typing import Generic, NamedTuple
 import numpy as np
 import numpy.typing as npt
 from gymnasium import spaces
+import random
 
 ObsType = TypeVar("ObsType")
 AbsObsType = TypeVar("AbsObsType")
@@ -24,6 +25,31 @@ class Transition(tuple, Generic[ObsType, ActType]):
 
     def __iter__(self) -> Iterable[Any]:
         return iter(astuple(self))
+
+
+T = TypeVar("T")
+
+
+@dataclass(eq=False)
+class ReplayMemory(Generic[T]):
+    batch_size: int = 256
+    capacity: int = 2**15
+    last: int = field(default=0, init=False)
+    memory: list[T] = field(default_factory=list, init=False)
+
+    @property
+    def size(self) -> int:
+        return len(self.memory)
+
+    def push(self, item: T) -> None:
+        if self.size < self.capacity:
+            self.memory.append(item)
+        else:
+            self.memory[self.last] = item
+            self.last = (self.last + 1) % self.capacity
+
+    def sample(self, quantity: Optional[int] = None) -> list[T]:
+        return random.sample(self.memory, min(self.size, (quantity or self.batch_size)))
 
 
 # per fare una tupla di tensori, basta ereditare da tuple
