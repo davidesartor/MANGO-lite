@@ -4,6 +4,7 @@ from typing import Any, Callable, Iterable, Optional, Protocol, Sequence, TypeVa
 from typing import Generic, NamedTuple
 import numpy as np
 import numpy.typing as npt
+from gymnasium import spaces
 
 ObsType = TypeVar("ObsType")
 AbsObsType = TypeVar("AbsObsType")
@@ -11,7 +12,7 @@ ActType = TypeVar("ActType")
 AbsActType = TypeVar("AbsActType")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Transition(tuple, Generic[ObsType, ActType]):
     start_state: ObsType
     action: ActType
@@ -23,17 +24,6 @@ class Transition(tuple, Generic[ObsType, ActType]):
 
     def __iter__(self) -> Iterable[Any]:
         return iter(astuple(self))
-
-
-
-class Environment(Protocol[ObsType, ActType]):
-    def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
-        ...
-
-    def reset(
-        self, *, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> tuple[ObsType, dict]:
-        ...
 
 
 # per fare una tupla di tensori, basta ereditare da tuple

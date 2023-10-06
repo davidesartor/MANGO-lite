@@ -1,6 +1,6 @@
 from typing import Sequence
 import torch
-import basecells
+from . import basecells
 
 
 class LinearNet(torch.nn.Sequential):
