@@ -5,15 +5,12 @@ from .lazymodules import LazyConvNd, LazyBatchNormNd
 
 
 class Squeeze(nn.Module):
-    def __init__(self, dim: int | None = None):
+    def __init__(self, from_dim: int = 0):
         super().__init__()
-        self.dim = dim
+        self.from_dim = from_dim
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        y = torch.squeeze(x, dim=self.dim)
-        if x.shape[0] == 1:
-            y = torch.unsqueeze(y, dim=0)
-        return y
+        return x.squeeze(dim=tuple(range(self.from_dim, x.ndim)))
 
 
 class LinearCell(nn.Sequential):

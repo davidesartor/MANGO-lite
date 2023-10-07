@@ -15,6 +15,13 @@ from .utils import ReplayMemory
 ObsType = TypeVar("ObsType")
 
 
+@dataclass(eq=False, slots=True)
+class MangoLayer:
+    concept: ExtendedConcept
+    policy: DQnetPolicyMapper
+    replay_memory: ReplayMemory = field(default_factory=ReplayMemory)
+
+
 @dataclass(eq=False, slots=True, repr=False)
 class Mango(Generic[ObsType]):
     environment: Environment[ObsType, int]
@@ -22,7 +29,8 @@ class Mango(Generic[ObsType]):
     base_concept: Concept[ObsType, npt.NDArray] = IdentityConcept()
 
     intralayer_policies: list[DQnetPolicyMapper] = field(init=False)
-    replay_memories: list[
+    layers: list[MangoLayer] = field(init=False)
+
     def __post_init__(self):
         self.intralayer_policies = [
             DQnetPolicyMapper(
@@ -38,9 +46,11 @@ class Mango(Generic[ObsType]):
                     action_space=self.intralayer_policies[-1].comand_space,
                 )
             )
-            
-        for policy in self.intralayer_policies:
-            policy.set_exploration_rate(0.1)
+
+        self.layers = [
+            MangoLayer(concept, policy)
+            for concept, policy in zip(self.concepts, self.intralayer_policies)
+        ]
 
     @property
     def option_space(self) -> list[spaces.Discrete]:
@@ -59,13 +69,11 @@ class Mango(Generic[ObsType]):
             self.execute_option(
                 action=int(self.option_space[layer].sample()), layer=layer
             )
-            for policy in self.intralayer_policies[:layer+1]:
-                policy.train(
+            for layer in self.layers:
+                layer.train(
                     transitions=self.environment.transitions,
                     reward_generator=policy.compatibility,
                 )
-            
-            
 
     def reset(self) -> None:
         state, info = self.environment.reset()

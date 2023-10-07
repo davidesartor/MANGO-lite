@@ -10,6 +10,7 @@ class LinearNet(torch.nn.Sequential):
         out_features: int,
         hidden_features: Sequence[int] = (16,),
         activation: torch.nn.Module = torch.nn.ReLU(),
+        out_activation: torch.nn.Module | None = None,
         batch_norm: bool = True,
         bias: bool = True,
         device: torch.device | None = None,
@@ -39,7 +40,7 @@ class LinearNet(torch.nn.Sequential):
             basecells.LinearCell(
                 in_features=layer_sizes[-2],
                 out_features=layer_sizes[-1],
-                activation=None,
+                activation=out_activation,
                 **cell_params,
             )
         )
@@ -103,19 +104,21 @@ class ConvEncoder(torch.nn.Sequential):
         out_features: int,
         kernel_size: int = 3,
         hidden_channels: Sequence[int] = (16, 16),
+        hidden_features: Sequence[int] = (16,),
         activation_conv: torch.nn.Module = torch.nn.ReLU(),
+        activation_linear: torch.nn.Module = torch.nn.ReLU(),
         residual_connections: bool = False,
         groups: int = 1,
         batch_norm: bool = True,
         bias: bool = True,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
-        hidden_features: Sequence[int] = (16,),
-        activation_linear: torch.nn.Module = torch.nn.ReLU(),
     ):
         super().__init__()
 
         self._initialized = False
+
+        self.append(basecells.Squeeze(from_dim=2))
 
         self.append(
             ConvNet(
@@ -149,6 +152,9 @@ class ConvEncoder(torch.nn.Sequential):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if not self._initialized and input.ndim == 2:
-            self.pop(0)
+        if not self._initialized:
+            if self[0].forward(input).ndim <= 2:
+                self.pop(0)
+                self.pop(0)
+            self._initialized = True
         return super().forward(input)
