@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import InitVar, dataclass, field
-from typing import Any, Generic, NewType, Sequence, TypeVar
+from typing import Any, Generic, Iterator, Optional, Sequence, TypeVar
 from gymnasium import spaces
 import numpy as np
 import numpy.typing as npt
@@ -9,100 +9,111 @@ from .concepts import ActionCompatibility, Concept, IdentityConcept
 
 from .dynamicpolicies import DQnetPolicyMapper
 from .environments import Environment
-from .utils import ReplayMemory
+from .utils import ReplayMemory, Transition
 
 
 ObsType = TypeVar("ObsType")
 
 
 @dataclass(eq=False, slots=True)
+class MangoEnv(Generic[ObsType]):
+    concept: Concept[ObsType]
+    environment: Environment[ObsType]
+
+    @property
+    def action_space(self) -> spaces.Discrete:
+        return self.environment.action_space
+
+    def step(
+        self, action: int, env_state: ObsType
+    ) -> tuple[ObsType, float, bool, bool, dict]:
+        return self.environment.step(action)
+
+
+@dataclass(eq=False, slots=True)
 class MangoLayer(Generic[ObsType]):
     concept: Concept[ObsType]
-    action_compatibility: ActionCompatibility 
-    lower_layer: MangoLayer[ObsType] = field(repr=False)
+    action_compatibility: ActionCompatibility
+
+    lower_layer: MangoLayer[ObsType] | MangoEnv[ObsType] = field(repr=False)
+    current_state: ObsType = field(init=False, repr=False)
 
     replay_memory: ReplayMemory = field(default_factory=ReplayMemory, repr=False)
     policy: DQnetPolicyMapper = field(init=False)
 
     def __post_init__(self) -> None:
         self.policy = DQnetPolicyMapper(
-            comand_space=self.concept.comand_space,  # type: ignore[protocol invariance]
+            comand_space=self.action_compatibility.action_space,
             action_space=self.lower_layer.action_space,
         )
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return self.concept.action_space
+        return self.action_compatibility.action_space
+
+    def step(
+        self, action: int, env_state: ObsType
+    ) -> tuple[ObsType, float, bool, bool, dict]:
+        transitions = []
+        while not terminated_cond:
+            pass
+
+    def iterate_policy(
+        self, action: int, env_state: ObsType
+    ) -> Iterator[tuple[Transition,Transition]]:
+        start_state_lower = self.lower_layer.concept.abstract(env_state)
+        start_state_upper = self.concept.abstract(env_state)
+
+        lower_action = self.policy.get_action(comand=action, state=start_state_lower)
+        env_state, reward, terminated, truncated, info = self.lower_layer.step(
+            action, env_state
+        )
+
+        next_state_lower = self.lower_layer.concept.abstract(env_state)
+        next_state_upper = self.concept.abstract(env_state)
+
+    def reset(self, *args, **kwargs) -> None:
+        self.current_state, info = self.lower_layer.reset(*args, **kwargs)
 
 
 @dataclass(eq=False, slots=True, init=False)
 class Mango(Generic[ObsType]):
-    layers: list[MangoLayer]
+    environment: Environment[ObsType]
+    layers: list[MangoLayer[ObsType] | MangoEnv[ObsType]]
 
     def __init__(
         self,
-        environment: Environment[ObsType, int],
-        concepts: Sequence[ExtendedConcept[ObsType, npt.NDArray, int]],
-        base_concept: Concept[ObsType, npt.NDArray] = IdentityConcept(),
+        environment: Environment[ObsType],
+        concepts: Sequence[Concept[ObsType]],
+        action_compatibilities: Sequence[ActionCompatibility],
+        base_concept: Concept[ObsType] = IdentityConcept(),
     ) -> None:
-        all_concepts = [base_concept] + list(concepts)
+        self.environment = environment
 
-        self.layers = []
-        for concept in self.concepts:
-            self.layers.append(
-                MangoLayer(
-                    concept,
-                    DQnetPolicyMapper(
-                        comand_space=concept.comand_space,  # type: ignore
-                        action_space=self.layers[-1].comand_space,
-                    ),
-                )
-            )
-
-        self.layers = [
-            MangoLayer(concept, policy)
-            for concept, policy in zip(self.concepts, self.intralayer_policies)
-        ]
+        self.layers = [MangoEnv(base_concept, self.environment)]
+        for concept, compatibility in zip(concepts, action_compatibilities):
+            self.layers.append(MangoLayer(concept, compatibility, self.layers[-1]))
 
     @property
     def option_space(self) -> list[spaces.Discrete]:
-        return [policy.comand_space for policy in self.intralayer_policies]
+        return [layer.action_space for layer in self.layers]
 
     def execute_option(self, action: int, layer: int = 0) -> None:
         ...
 
-    def train(self, epochs: int, layer: int = -1) -> None:
-        if layer == -1:
-            layer = len(self.intralayer_policies) - 1
+    def train(self, epochs: int, layer_idx: int = -1) -> None:
+        if layer_idx == -1:
+            layer_idx = len(self.layers) - 1
 
         for epoch in range(epochs):
             self.environment.reset()
 
             self.execute_option(
-                action=int(self.option_space[layer].sample()), layer=layer
+                action=int(self.option_space[layer_idx].sample()), layer=layer_idx
             )
             for layer in self.layers:
-                layer.train(
-                    transitions=self.environment.transitions,
-                    reward_generator=policy.compatibility,
-                )
+                layer.train()
 
     def reset(self) -> None:
         state, info = self.environment.reset()
         TODO
-
-
-"""def iterate_policy(
-    start_state: NamedMultiArray,
-    policy: Policy,
-    environment: AbstractEnvironment,
-) -> Iterable[Transition]:
-    action = policy(start_state)
-    step = environment.step(action)
-    yield Transition(start_state, action, *step)
-    
-    while not (step.terminated or step.truncated):
-        start_state = step.next_state
-        action = policy(start_state)
-        step = environment.step(action)        
-        yield Transition(start_state, action, *step)"""

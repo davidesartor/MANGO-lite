@@ -48,15 +48,17 @@ class DQnetPolicyMapper(DynamicPolicy):
     def train(
         self,
         transitions: Sequence[tuple[Transition, Transition]],
-        reward_generator: ActionCompatibility,
+        reward_gen: ActionCompatibility,
         emphasis: Callable[[int], float] = lambda _: 1.0,
     ) -> None:
         emph_tot = sum([emphasis(comand) for comand in range(self.comand_space.n)])
         for comand, policy in self.policies.items():
-            training_transitions = []
-            for t_low, t_up in transitions:
-                reward = reward_generator(comand, t_up.start_state, t_up.next_state)
-                training_transitions.append(t_low._replace(reward=reward))
+            training_transitions = [
+                t_lower._replace(
+                    reward=reward_gen(comand, t_upper.start_state, t_upper.next_state)
+                )
+                for t_lower, t_upper in transitions
+            ]
 
             for cycle in range(int(emphasis(comand) / emph_tot * self.comand_space.n)):
                 policy.train(lower_transitions)  # type: ignore[need correct typehinting of transition]
