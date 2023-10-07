@@ -30,20 +30,16 @@ class Environment(Protocol[ObsType]):
 @dataclass(eq=False, slots=True)
 class DummyEnvironment(Environment):
     state: int = 0
-
-    @property
-    def observation_space(self) -> spaces.Discrete:
-        return spaces.Discrete(2)
-
-    @property
-    def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(2)
+    observation_space: spaces.Space = spaces.Discrete(2)
+    action_space: spaces.Discrete = spaces.Discrete(2)
 
     def step(self, action: int) -> tuple[int, float, bool, bool, dict]:
-        return 1 - action, float(self.state == action), False, False, {}
+        reward = float(self.state == action)
+        self.state = self.observation_space.sample()
+        return self.state, reward, False, False, {}
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[int, dict]:
-        self.state = 0
+        self.state = self.observation_space.sample()
         return self.state, {}
