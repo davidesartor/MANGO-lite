@@ -1,33 +1,26 @@
 from dataclasses import InitVar, dataclass, field, replace
 from typing import Any, Protocol, Sequence, TypeVar, Callable, Iterable, Optional
 
-import numpy as np
 import numpy.typing as npt
 from gymnasium import spaces
 
+from .concepts import ActionCompatibility
 from .policies import Policy, DQnetPolicy
 from .utils import Transition
 
 
-ObsType = TypeVar("ObsType")
-AbsObsType = TypeVar("AbsObsType")
-ActType = TypeVar("ActType")
-AbsActType = TypeVar("AbsActType")
+class DynamicPolicy(Protocol):
+    comand_space: spaces.Discrete
+    action_space: spaces.Discrete
 
-
-class DynamicPolicy(Protocol[AbsActType, ObsType, ActType]):
-    comand_space: spaces.Space[AbsActType]
-    action_space: spaces.Space[ActType]
-    exploration_rate: float = 1.0
-
-    def get_action(self, comand: AbsActType, state: ObsType) -> ActType:
+    def get_action(self, comand: int, state: npt.NDArray) -> int:
         ...
 
     def train(
         self,
-        transitions: Sequence[Transition[tuple[ObsType, AbsObsType], ActType]],
-        reward_generator: Callable[[AbsActType, AbsObsType, AbsObsType], float],
-        emphasis: Callable[[AbsActType], float] = lambda _: 1.0,
+        transitions: Sequence[tuple[Transition, Transition]],
+        reward_generator: ActionCompatibility,
+        emphasis: Callable[[int], float] = lambda _: 1.0,
     ) -> None:
         ...
 
@@ -36,12 +29,12 @@ class DynamicPolicy(Protocol[AbsActType, ObsType, ActType]):
 
 
 @dataclass(eq=False, slots=True)
-class DQnetPolicyMapper(DynamicPolicy[int, npt.NDArray, int]):
+class DQnetPolicyMapper(DynamicPolicy):
     comand_space: spaces.Discrete
     action_space: spaces.Discrete
 
     exploration_rate: float = field(init=False, default=1.0, repr=False)
-    policies: dict[int, Policy[npt.NDArray, int]] = field(init=False, repr=False)
+    policies: dict[int, Policy] = field(init=False, repr=False)
 
     def __post_init__(self):
         self.policies = {
@@ -54,16 +47,17 @@ class DQnetPolicyMapper(DynamicPolicy[int, npt.NDArray, int]):
 
     def train(
         self,
-        transitions: Sequence[Transition[tuple[npt.NDArray, npt.NDArray], int]],
-        reward_generator: Callable[[int, npt.NDArray, npt.NDArray], float],
+        transitions: Sequence[tuple[Transition, Transition]],
+        reward_generator: ActionCompatibility,
         emphasis: Callable[[int], float] = lambda _: 1.0,
     ) -> None:
         emph_tot = sum([emphasis(comand) for comand in range(self.comand_space.n)])
         for comand, policy in self.policies.items():
-            lower_transitions = [
-                (s1, act, s2, reward_generator(comand, as1, as2), ter, tru, info)
-                for (s1, as1), act, (s2, as2), rew, ter, tru, info in transitions
-            ]
+            training_transitions = []
+            for t_low, t_up in transitions:
+                reward = reward_generator(comand, t_up.start_state, t_up.next_state)
+                training_transitions.append(t_low._replace(reward=reward))
+
             for cycle in range(int(emphasis(comand) / emph_tot * self.comand_space.n)):
                 policy.train(lower_transitions)  # type: ignore[need correct typehinting of transition]
 

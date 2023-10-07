@@ -7,21 +7,18 @@ import numpy.typing as npt
 from gymnasium import spaces
 
 ObsType = TypeVar("ObsType")
-AbsObsType = TypeVar("AbsObsType")
-ActType = TypeVar("ActType")
-AbsActType = TypeVar("AbsActType")
 
 
-class Environment(Protocol[ObsType, ActType]):
+class Environment(Protocol[ObsType]):
     @property
     def observation_space(self) -> spaces.Space[ObsType]:
         ...
 
     @property
-    def action_space(self) -> spaces.Space[ActType]:
+    def action_space(self) -> spaces.Discrete:
         ...
 
-    def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
+    def step(self, action: int) -> tuple[ObsType, float, bool, bool, dict]:
         ...
 
     def reset(

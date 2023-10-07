@@ -9,15 +9,12 @@ from gymnasium import spaces
 from .neuralnetworks.networks import ConvEncoder
 from .utils import Transition
 
-ObsType = TypeVar("ObsType")
-ActType = TypeVar("ActType")
 
-
-class Policy(Protocol[ObsType, ActType]):
-    def get_action(self, state: ObsType) -> ActType:
+class Policy(Protocol):
+    def get_action(self, state: npt.NDArray) -> int:
         ...
 
-    def train(self, transitions: Sequence[Transition[ObsType, ActType]]):
+    def train(self, transitions: Sequence[Transition]):
         ...
 
     def set_exploration_rate(self, exploration_rate: float) -> None:
@@ -25,13 +22,13 @@ class Policy(Protocol[ObsType, ActType]):
 
 
 @dataclass(eq=False, slots=True)
-class RandomPolicy(Policy[Any, ActType]):
-    action_space: spaces.Space[ActType]
+class RandomPolicy(Policy):
+    action_space: spaces.Discrete
 
-    def get_action(self, state: Any) -> ActType:
-        return self.action_space.sample()
+    def get_action(self, state: Any) -> int:
+        return int(self.action_space.sample())
 
-    def train(self, transitions: Sequence[Transition[Any, ActType]]):
+    def train(self, transitions: Sequence[Transition]):
         pass
 
     def set_exploration_rate(self, exploration_rate: float) -> None:
@@ -39,7 +36,7 @@ class RandomPolicy(Policy[Any, ActType]):
 
 
 @dataclass(eq=False, slots=True)
-class DQnetPolicy(Policy[npt.NDArray, int]):
+class DQnetPolicy(Policy):
     action_space: spaces.Discrete
 
     loss_function = torch.nn.SmoothL1Loss()
@@ -68,7 +65,7 @@ class DQnetPolicy(Policy[npt.NDArray, int]):
         action = torch.multinomial(action_prob, num_samples=1)
         return int(action.item())
 
-    def train(self, transitions: Sequence[Transition[npt.NDArray, int]]):
+    def train(self, transitions: Sequence[Transition]):
         self.net.train()
         for _ in range(self.train_cycles):
             loss = self.compute_loss(transitions)
@@ -88,15 +85,13 @@ class DQnetPolicy(Policy[npt.NDArray, int]):
         if t == 0:
             self.target_net = copy.deepcopy(self.net)
 
-    def compute_loss(
-        self, transitions: Sequence[Transition[npt.NDArray, int]]
-    ) -> torch.Tensor:
+    def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
         start_states, action_idxs, next_states, rewards, *_ = zip(*transitions)
 
-        start_states = torch.as_tensor(np.stack(start_states), dtype=torch.float32)
+        start_states = torch.as_tensor(np.stack(start_states), dtype=torch.float32)  # type: ignore
         actions = torch.as_tensor(np.array(action_idxs), dtype=torch.int64).unsqueeze(1)
-        next_states = torch.as_tensor(np.stack(next_states), dtype=torch.float32)
+        next_states = torch.as_tensor(np.stack(next_states), dtype=torch.float32)  # type: ignore
         rewards = torch.as_tensor(np.array(rewards), dtype=torch.float32)
 
         qvals = torch.gather(self.net(start_states), 1, actions).squeeze(1)

@@ -1,52 +1,43 @@
-from typing import Any, Generic, Mapping, Protocol, Sequence, TypeVar
+from typing import Any, Mapping, Protocol, Sequence, TypeVar
 from dataclasses import dataclass
 
 from gymnasium import spaces
+import numpy as np
+import numpy.typing as npt
 
 ObsType = TypeVar("ObsType")
-AbsObsType = TypeVar("AbsObsType")
-AbsActType = TypeVar("AbsActType")
 
 
-class Concept(Protocol[ObsType, AbsObsType]):
-    def abstract(self, observation: ObsType) -> AbsObsType:
+class Concept(Protocol[ObsType]):
+    def abstract(self, observation: ObsType) -> npt.NDArray:
         ...
 
 
-class ExtendedConcept(Protocol[ObsType, AbsObsType, AbsActType]):
-    @property
-    def comand_space(self) -> spaces.Space[AbsActType]:
-        ...
+class ActionCompatibility(Protocol):
+    action_space: spaces.Discrete
 
-    def compatibility(
-        self, comand: AbsActType, start_state: AbsObsType, next_state: AbsObsType
+    def __call__(
+        self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
     ) -> float:
         ...
 
-    def abstract(self, observation: ObsType) -> AbsObsType:
-        ...
 
-
-class IdentityConcept(Concept[Any, Any]):
-    def abstract(self, input_state: Any) -> Any:
+@dataclass(frozen=True, eq=False)
+class IdentityConcept(Concept[npt.NDArray]):
+    def abstract(self, input_state: npt.NDArray) -> npt.NDArray:
         return input_state
 
 
 @dataclass(frozen=True, eq=False)
-class IdentityExtendedConcept(Generic[AbsActType]):
-    comand_space: spaces.Space[AbsActType]
+class FullCompatibility(ActionCompatibility):
+    action_space: spaces.Discrete
 
-    def compatibility(
-        self, comand: AbsActType, start_state: Any, next_state: Any
-    ) -> float:
+    def __call__(self, comand: Any, start_state: Any, next_state: Any) -> float:
         return 1.0
 
-    def abstract(self, input_state: Any) -> Any:
-        return input_state
-
 
 @dataclass(frozen=True, eq=False)
-class Strip(Concept[Mapping[str, Any], ObsType]):
+class Strip(Concept[Mapping[str, Any]]):
     key: str | Sequence[str]
 
     @property
@@ -57,12 +48,12 @@ class Strip(Concept[Mapping[str, Any], ObsType]):
     def name(self) -> str:
         return f"Strip[" + "][ ".join([str(k) for k in self.keys]) + "]Concept"
 
-    def abstract(self, input_state: Mapping[str, Any]) -> ObsType:
+    def abstract(self, input_state: Mapping[str, Any]) -> npt.NDArray:
         try:
             output_state = input_state
             for key in self.keys:
                 output_state = output_state[key]
-            return output_state  # type: ignore
+            return np.array(output_state)
         except KeyError:
             raise KeyError(
                 f"Abstraction failed: {input_state} missing keys {self.keys}."
