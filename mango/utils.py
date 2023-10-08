@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
 from typing import Any, Generic, Optional, TypeVar
 from typing import Generic, NamedTuple
+
+import numpy as np
+from matplotlib import pyplot as plt
 import numpy.typing as npt
 import random
 
@@ -54,3 +57,33 @@ def torch_style_repr(class_name: str, params: dict[str, str]) -> str:
         repr_str += f"({k}): {v}\n"
     repr_str = add_indent(repr_str) + "\n)"
     return repr_str
+
+
+def plot_grid(
+    grid_shape: tuple[int, int],
+    cell_shape: tuple[int, int],
+    img_shape: tuple[int, int] = (512, 512),
+):
+    pixels_in_grid_square = tuple(
+        (pixels_in_img // squares_in_grid)
+        for pixels_in_img, squares_in_grid in zip(img_shape, grid_shape)
+    )
+    pixels_per_cell = tuple(
+        pixels_in_square * squares_in_cell
+        for pixels_in_square, squares_in_cell in zip(pixels_in_grid_square, cell_shape)
+    )
+
+    offset = tuple(int(square_size * 0.2) for square_size in pixels_in_grid_square)
+    width, height = tuple(
+        int(cell_size - 0.4 * square_size)
+        for cell_size, square_size in zip(pixels_per_cell, pixels_in_grid_square)
+    )
+
+    for x, y in np.ndindex(grid_shape):
+        position = (
+            x * pixels_per_cell[0] + offset[0],
+            y * pixels_per_cell[1] + offset[1],
+        )
+        plt.gca().add_patch(
+            plt.Rectangle(position, width, height, fc="red", alpha=0.2)  # type: ignore
+        )

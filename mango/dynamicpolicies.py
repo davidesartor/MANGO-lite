@@ -4,7 +4,7 @@ from typing import Protocol, Sequence, Callable
 import numpy.typing as npt
 from gymnasium import spaces
 
-from .concepts import ActionCompatibility
+from .actions import ActionCompatibility
 from .policies import Policy, DQnetPolicy
 from .utils import Transition
 

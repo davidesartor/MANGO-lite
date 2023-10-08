@@ -5,8 +5,8 @@ from gymnasium import spaces
 import numpy as np
 import numpy.typing as npt
 
-from .concepts import ActionCompatibility, Concept, IdentityConcept
-
+from .actions import ActionCompatibility
+from .concepts import Concept, IdentityConcept
 from .dynamicpolicies import DQnetPolicyMapper
 from .environments import Environment
 from .utils import ReplayMemory, Transition, torch_style_repr

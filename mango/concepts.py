@@ -13,27 +13,29 @@ class Concept(Protocol[ObsType]):
         ...
 
 
-class ActionCompatibility(Protocol):
-    action_space: spaces.Discrete
-
-    def __call__(
-        self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
-    ) -> float:
-        ...
-
-
 @dataclass(frozen=True, eq=False)
 class IdentityConcept(Concept[npt.NDArray]):
     def abstract(self, input_state: npt.NDArray) -> npt.NDArray:
         return input_state
 
 
-@dataclass(frozen=True, eq=False)
-class FullCompatibility(ActionCompatibility):
-    action_space: spaces.Discrete
+@dataclass
+class Int2CoordConcept(Concept[int]):
+    global_shape: tuple[int, int]
 
-    def __call__(self, comand: Any, start_state: Any, next_state: Any) -> float:
-        return 1.0
+    def abstract(self, observation: int) -> npt.NDArray:
+        y, x = np.unravel_index(observation, self.global_shape)
+        return np.array([y, x])
+
+
+@dataclass
+class GridPartitionConcept(Concept[int]):
+    global_shape: tuple[int, int]
+    cell_shape: tuple[int, int]
+
+    def abstract(self, observation: int) -> npt.NDArray:
+        y, x = np.unravel_index(observation, self.global_shape)
+        return np.array([y // self.cell_shape[0], x // self.cell_shape[1]])
 
 
 @dataclass(frozen=True, eq=False)
