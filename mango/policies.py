@@ -4,8 +4,8 @@ import copy
 import numpy as np
 import numpy.typing as npt
 import torch
+import gymnasium as gym
 
-from gymnasium import spaces
 from .neuralnetworks.networks import ConvEncoder
 from .utils import Transition
 
@@ -20,7 +20,7 @@ class Policy(Protocol):
 
 @dataclass(eq=False, slots=True)
 class RandomPolicy(Policy):
-    action_space: spaces.Discrete
+    action_space: gym.spaces.Discrete
 
     def get_action(self, state: Any) -> int:
         return int(self.action_space.sample())
@@ -31,7 +31,7 @@ class RandomPolicy(Policy):
 
 @dataclass(eq=False, slots=True)
 class DQnetPolicy(Policy):
-    action_space: spaces.Discrete
+    action_space: gym.spaces.Discrete
 
     loss_function = torch.nn.SmoothL1Loss()
     gamma: float = field(default=0.99, repr=False)

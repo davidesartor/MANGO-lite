@@ -1,14 +1,13 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Generic, Optional, Sequence, TypeVar, overload
-from gymnasium import spaces
+from typing import Generic, Optional, Sequence, SupportsFloat, TypeVar
+import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
 
 from .actions import ActionCompatibility
 from .concepts import Concept, IdentityConcept
 from .dynamicpolicies import DQnetPolicyMapper
-from .environments import Environment
 from .utils import ReplayMemory, Transition, torch_style_repr
 
 
@@ -18,14 +17,14 @@ ObsType = TypeVar("ObsType")
 @dataclass(eq=False, slots=True, repr=False)
 class MangoEnv(Generic[ObsType]):
     concept: Concept[ObsType]
-    environment: Environment[ObsType]
+    environment: gym.Env[ObsType, int]
     abs_state: npt.NDArray = field(init=False)
 
     @property
-    def action_space(self) -> spaces.Discrete:
-        return self.environment.action_space
+    def action_space(self) -> gym.spaces.Discrete:
+        return self.environment.action_space  # type: ignore
 
-    def step(self, action: int) -> tuple[ObsType, float, bool, bool, dict]:
+    def step(self, action: int) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
         env_state, reward, term, trunc, info = self.environment.step(action)
         self.abs_state = self.concept.abstract(env_state)
         info["mango:trajectory"] = [env_state]
@@ -64,10 +63,10 @@ class MangoLayer(Generic[ObsType]):
         )
 
     @property
-    def action_space(self) -> spaces.Discrete:
+    def action_space(self) -> gym.spaces.Discrete:
         return self.action_compatibility.action_space
 
-    def step(self, action: int) -> tuple[ObsType, float, bool, bool, dict]:
+    def step(self, action: int) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
         transitions = []
         env_state_trajectory = []
         low_state = self.lower_layer.abs_state
@@ -101,7 +100,7 @@ class MangoLayer(Generic[ObsType]):
         infos = {k: v for t_low, t_up in transitions for k, v in t_low.info.items()}
         infos["mango:trajectory"] = env_state_trajectory
 
-        return env_state, accumulated_reward, term, trunc, infos  # type: ignore[return-value]
+        return env_state, accumulated_reward, term, trunc, infos  # type: ignore
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -122,7 +121,7 @@ class MangoLayer(Generic[ObsType]):
 class Mango(Generic[ObsType]):
     def __init__(
         self,
-        environment: Environment[ObsType],
+        environment: gym.Env[ObsType, int],
         concepts: Sequence[Concept[ObsType]],
         action_compatibilities: Sequence[ActionCompatibility],
         base_concept: Concept[ObsType] = IdentityConcept(),
@@ -136,7 +135,7 @@ class Mango(Generic[ObsType]):
         self.reset()
 
     @property
-    def option_space(self) -> tuple[spaces.Discrete, ...]:
+    def option_space(self) -> tuple[gym.spaces.Discrete, ...]:
         return tuple(layer.action_space for layer in self.layers)
 
     def execute_option(

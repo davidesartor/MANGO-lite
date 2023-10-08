@@ -1,7 +1,6 @@
 from typing import Any, Mapping, Protocol, Sequence, TypeVar
 from dataclasses import dataclass
 
-from gymnasium import spaces
 import numpy as np
 import numpy.typing as npt
 

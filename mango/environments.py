@@ -1,34 +1,14 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional, Protocol, TypeVar
-from gymnasium import spaces
-
-ObsType = TypeVar("ObsType")
-
-
-class Environment(Protocol[ObsType]):
-    @property
-    def observation_space(self) -> spaces.Space[ObsType]:
-        ...
-
-    @property
-    def action_space(self) -> spaces.Discrete:
-        ...
-
-    def step(self, action: int) -> tuple[ObsType, float, bool, bool, dict]:
-        ...
-
-    def reset(
-        self, *, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> tuple[ObsType, dict]:
-        ...
+from typing import Optional
+import gymnasium as gym
 
 
 @dataclass(eq=False, slots=True)
-class DummyEnvironment(Environment):
+class DummyEnvironment(gym.Env[int, int]):
     state: int = 0
-    observation_space: spaces.Space = spaces.Discrete(2)
-    action_space: spaces.Discrete = spaces.Discrete(2)
+    observation_space: gym.spaces.Space = gym.spaces.Discrete(2)
+    action_space: gym.spaces.Discrete = gym.spaces.Discrete(2)
 
     def step(self, action: int) -> tuple[int, float, bool, bool, dict]:
         reward = float(self.state == action)
@@ -40,6 +20,6 @@ class DummyEnvironment(Environment):
     ) -> tuple[int, dict]:
         self.state = self.observation_space.sample()
         return self.state, {}
-    
+
     def render(self, mode: str = "human"):
         ...

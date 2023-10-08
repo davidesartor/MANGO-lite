@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import Protocol, Sequence, Callable
 
 import numpy.typing as npt
-from gymnasium import spaces
+import gymnasium as gym
 
 from .actions import ActionCompatibility
 from .policies import Policy, DQnetPolicy
@@ -10,8 +10,8 @@ from .utils import Transition
 
 
 class DynamicPolicy(Protocol):
-    comand_space: spaces.Discrete
-    action_space: spaces.Discrete
+    comand_space: gym.spaces.Discrete
+    action_space: gym.spaces.Discrete
 
     def get_action(self, comand: int, state: npt.NDArray) -> int:
         ...
@@ -27,8 +27,8 @@ class DynamicPolicy(Protocol):
 
 @dataclass(eq=False, slots=True)
 class DQnetPolicyMapper(DynamicPolicy):
-    comand_space: spaces.Discrete
-    action_space: spaces.Discrete
+    comand_space: gym.spaces.Discrete
+    action_space: gym.spaces.Discrete
 
     exploration_rate: float = field(init=False, default=1.0, repr=False)
     policies: dict[int, Policy] = field(init=False, repr=False)

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Generic, Optional, TypeVar
-from typing import Generic, NamedTuple
+from typing import Generic, NamedTuple, SupportsFloat
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -12,7 +12,7 @@ class Transition(NamedTuple):
     start_state: npt.NDArray
     action: int
     next_state: npt.NDArray
-    reward: float
+    reward: SupportsFloat
     terminated: bool
     truncated: bool
     info: dict[str, Any]
