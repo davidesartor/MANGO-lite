@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Generic, Optional, Sequence, TypeVar
+from typing import Generic, Optional, Sequence, TypeVar, overload
 from gymnasium import spaces
 import numpy as np
 import numpy.typing as npt
@@ -26,7 +26,10 @@ class MangoEnv(Generic[ObsType]):
         return self.environment.action_space
 
     def step(self, action: int) -> tuple[ObsType, float, bool, bool, dict]:
-        return self.environment.step(action)
+        env_state, reward, term, trunc, info = self.environment.step(action)
+        self.abs_state = self.concept.abstract(env_state)
+        info["mango:trajectory"] = [env_state]
+        return env_state, reward, term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -66,6 +69,7 @@ class MangoLayer(Generic[ObsType]):
 
     def step(self, action: int) -> tuple[ObsType, float, bool, bool, dict]:
         transitions = []
+        env_state_trajectory = []
         low_state = self.lower_layer.abs_state
         up_state = self.abs_state
 
@@ -74,6 +78,7 @@ class MangoLayer(Generic[ObsType]):
 
             env_state, reward, term, trunc, info = self.lower_layer.step(action)
 
+            env_state_trajectory.extend(info["mango:trajectory"])
             self.abs_state = self.concept.abstract(env_state)
             low_next_state, up_next_state = self.lower_layer.abs_state, self.abs_state
 
@@ -94,6 +99,8 @@ class MangoLayer(Generic[ObsType]):
 
         accumulated_reward = sum([t_low.reward for t_low, t_up in transitions])
         infos = {k: v for t_low, t_up in transitions for k, v in t_low.info.items()}
+        infos["mango:trajectory"] = env_state_trajectory
+
         return env_state, accumulated_reward, term, trunc, infos  # type: ignore[return-value]
 
     def reset(

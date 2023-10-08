@@ -40,3 +40,6 @@ class DummyEnvironment(Environment):
     ) -> tuple[int, dict]:
         self.state = self.observation_space.sample()
         return self.state, {}
+    
+    def render(self, mode: str = "human"):
+        ...
