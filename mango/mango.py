@@ -75,7 +75,7 @@ class MangoLayer(Generic[ObsType]):
         for step in range(max(self.max_steps, 1)):
             low_action = self.policy.get_action(comand=action, state=low_state)
 
-            env_state, reward, term, trunc, info = self.lower_layer.step(action)
+            env_state, reward, term, trunc, info = self.lower_layer.step(low_action)
 
             env_state_trajectory.extend(info["mango:trajectory"])
             self.abs_state = self.concept.abstract(env_state)
@@ -136,12 +136,14 @@ class Mango(Generic[ObsType]):
 
     @property
     def option_space(self) -> tuple[gym.spaces.Discrete, ...]:
-        return tuple(layer.action_space for layer in self.layers)
+        return tuple(layer.action_space for layer in [self.environment, *self.layers])
 
     def execute_option(
         self, action: int, layer: int = 0
-    ) -> tuple[ObsType, float, bool, bool, dict]:
-        return self.layers[layer].step(action)
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
+        if layer == 0:
+            return self.environment.step(action)
+        return self.layers[layer - 1].step(action)
 
     def train(self, steps: int, layer_idx: int = -1, epochs: int = 1) -> None:
         for epoch in range(epochs):
