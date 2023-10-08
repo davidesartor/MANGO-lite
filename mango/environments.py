@@ -1,9 +1,6 @@
 from __future__ import annotations
-from dataclasses import dataclass, astuple
-from typing import Any, Callable, Iterable, Optional, Protocol, Sequence, TypeVar
-from typing import Generic, NamedTuple
-import numpy as np
-import numpy.typing as npt
+from dataclasses import dataclass
+from typing import Optional, Protocol, TypeVar
 from gymnasium import spaces
 
 ObsType = TypeVar("ObsType")

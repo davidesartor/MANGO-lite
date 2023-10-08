@@ -1,6 +1,6 @@
 from __future__ import annotations
-from dataclasses import InitVar, dataclass, field
-from typing import Any, Generic, Iterator, Optional, OrderedDict, Sequence, TypeVar
+from dataclasses import dataclass, field
+from typing import Generic, Optional, Sequence, TypeVar
 from gymnasium import spaces
 import numpy as np
 import numpy.typing as npt
@@ -9,7 +9,7 @@ from .concepts import ActionCompatibility, Concept, IdentityConcept
 
 from .dynamicpolicies import DQnetPolicyMapper
 from .environments import Environment
-from .utils import ReplayMemory, Transition, add_indent, torch_style_repr
+from .utils import ReplayMemory, Transition, torch_style_repr
 
 
 ObsType = TypeVar("ObsType")

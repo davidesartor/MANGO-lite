@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Generic, Optional, TypeVar
 from typing import Generic, NamedTuple
-import numpy as np
 import numpy.typing as npt
 import random
 

@@ -1,5 +1,5 @@
-from dataclasses import InitVar, dataclass, field
-from typing import Any, Protocol, Sequence, SupportsFloat, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, Protocol, Sequence
 import copy
 import numpy as np
 import numpy.typing as npt
