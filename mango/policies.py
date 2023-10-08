@@ -17,9 +17,6 @@ class Policy(Protocol):
     def train(self, transitions: Sequence[Transition]):
         ...
 
-    def set_exploration_rate(self, exploration_rate: float) -> None:
-        ...
-
 
 @dataclass(eq=False, slots=True)
 class RandomPolicy(Policy):
@@ -29,9 +26,6 @@ class RandomPolicy(Policy):
         return int(self.action_space.sample())
 
     def train(self, transitions: Sequence[Transition]):
-        pass
-
-    def set_exploration_rate(self, exploration_rate: float) -> None:
         pass
 
 
@@ -74,9 +68,6 @@ class DQnetPolicy(Policy):
             self.optimizer.step()
             self.loss_log.append(loss.item())
         self.update_target()
-
-    def set_exploration_rate(self, exploration_rate: float) -> None:
-        self.exploration_rate = exploration_rate
 
     def update_target(self):
         t, tmax = self.refresh_timer

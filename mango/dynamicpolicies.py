@@ -24,9 +24,6 @@ class DynamicPolicy(Protocol):
     ) -> None:
         ...
 
-    def set_exploration_rate(self, exploration_rate: float) -> None:
-        ...
-
 
 @dataclass(eq=False, slots=True)
 class DQnetPolicyMapper(DynamicPolicy):
@@ -62,7 +59,3 @@ class DQnetPolicyMapper(DynamicPolicy):
 
             for cycle in range(int(emphasis(comand) / emph_tot * self.comand_space.n)):
                 policy.train(lower_transitions)  # type: ignore[need correct typehinting of transition]
-
-    def set_exploration_rate(self, exploration_rate: float) -> None:
-        for comand, policy in self.policies.items():
-            policy.set_exploration_rate(exploration_rate)
