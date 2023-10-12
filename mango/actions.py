@@ -23,3 +23,34 @@ class FullCompatibility(ActionCompatibility):
 
     def __call__(self, comand: Any, start_state: Any, next_state: Any) -> float:
         return 1.0
+
+
+@dataclass(frozen=True, eq=False)
+class GridCompatibility(ActionCompatibility):
+    action_space = gym.spaces.Discrete(4)
+
+    def __call__(
+        self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
+    ) -> float:
+        if np.all(next_state == start_state):
+            return 0.0
+
+        delta_y, delta_x = next_state - start_state
+
+        # 0 = left
+        if comand == 0:
+            if delta_y == 0 and delta_x == -1:
+                return 1.0
+        # 1 = down
+        elif comand == 1:
+            if delta_y == 1 and delta_x == 0:
+                return 1.0
+        # 2 = right
+        elif comand == 2:
+            if delta_y == 0 and delta_x == 1:
+                return 1.0
+        # 3 = up
+        elif comand == 3:
+            if delta_y == -1 and delta_x == 0:
+                return 1.0
+        return -1.0
