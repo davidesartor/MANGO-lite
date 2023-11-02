@@ -6,7 +6,7 @@ import gymnasium as gym
 
 from .actions import ActionCompatibility
 from .policies import Policy, DQnetPolicy
-from .utils import Transition
+from .utils import Transition, torch_style_repr
 
 
 class DynamicPolicy(Protocol):
@@ -20,17 +20,15 @@ class DynamicPolicy(Protocol):
         self,
         transitions: Sequence[tuple[Transition, Transition]],
         reward_generator: ActionCompatibility,
-        emphasis: Callable[[int], float] = lambda _: 1.0,
     ) -> None:
         ...
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, slots=True, repr=False)
 class DQnetPolicyMapper(DynamicPolicy):
     comand_space: gym.spaces.Discrete
     action_space: gym.spaces.Discrete
 
-    exploration_rate: float = field(init=False, default=1.0, repr=False)
     policies: dict[int, Policy] = field(init=False, repr=False)
 
     def __post_init__(self):
@@ -46,9 +44,7 @@ class DQnetPolicyMapper(DynamicPolicy):
         self,
         transitions: Sequence[tuple[Transition, Transition]],
         reward_gen: ActionCompatibility,
-        emphasis: Callable[[int], float] = lambda _: 1.0,
     ) -> None:
-        emph_tot = sum([emphasis(comand) for comand in range(self.comand_space.n)])
         for comand, policy in self.policies.items():
             training_transitions = [
                 t_lower._replace(
@@ -56,6 +52,8 @@ class DQnetPolicyMapper(DynamicPolicy):
                 )
                 for t_lower, t_upper in transitions
             ]
+            policy.train(training_transitions)
 
-            for cycle in range(int(emphasis(comand) / emph_tot * self.comand_space.n)):
-                policy.train(lower_transitions)  # type: ignore[need correct typehinting of transition]
+    def __repr__(self) -> str:
+        params = {f"{comand}": str(policy) for comand, policy in self.policies.items()}
+        return torch_style_repr(self.__class__.__name__, params)

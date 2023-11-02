@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from typing import Any, Protocol, Sequence
 import copy
 import numpy as np
@@ -29,33 +29,36 @@ class RandomPolicy(Policy):
         pass
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(eq=False, slots=True, repr=False)
 class DQnetPolicy(Policy):
     action_space: gym.spaces.Discrete
 
     loss_function = torch.nn.SmoothL1Loss()
-    gamma: float = field(default=0.99, repr=False)
-    train_cycles: int = field(default=1, repr=False)
-    refresh_timer: tuple[int, int] = field(default=(0, 1), repr=False)
+    gamma: float = 0.99
+    lr: InitVar[float] = 1e-4
+    train_cycles: int = 1
+    refresh_timer: tuple[int, int] = (0, 10)
 
-    exploration_rate: float = field(init=False, default=1.0, repr=False)
-    loss_log: list[float] = field(init=False, default_factory=list, repr=False)
-    net: ConvEncoder = field(init=False, repr=False)
-    target_net: ConvEncoder = field(init=False, repr=False)
-    optimizer: torch.optim.Optimizer = field(init=False, repr=False)
+    loss_log: list[float] = field(init=False, default_factory=list)
+    net: ConvEncoder = field(init=False)
+    target_net: ConvEncoder = field(init=False)
+    optimizer: torch.optim.Optimizer = field(init=False)
 
-    def __post_init__(self):
+    def __post_init__(self, lr: float = 1e-4):
         self.net = ConvEncoder(in_channels=None, out_features=int(self.action_space.n))
         self.target_net = ConvEncoder(
             in_channels=None, out_features=int(self.action_space.n)
         )
-        self.optimizer = torch.optim.Adam(params=self.net.parameters(recurse=True))
+        self.optimizer = torch.optim.Adam(
+            params=self.net.parameters(recurse=True), lr=lr
+        )
 
     def get_action(self, state: npt.NDArray) -> int:
         self.net.eval()
         tensor_state = torch.as_tensor(state, dtype=torch.float32)
         action_log_prob = self.net.forward(tensor_state.unsqueeze(0))
-        action_prob = torch.softmax(action_log_prob / self.exploration_rate, dim=-1)
+        return int(torch.argmax(action_log_prob).item())
+        action_prob = torch.softmax(action_log_prob, dim=-1)
         action = torch.multinomial(action_prob, num_samples=1)
         return int(action.item())
 
@@ -66,7 +69,7 @@ class DQnetPolicy(Policy):
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            self.loss_log.append(loss.item())
+            self.loss_log.append(float(loss.item()))
         self.update_target()
 
     def update_target(self):
@@ -78,14 +81,19 @@ class DQnetPolicy(Policy):
 
     def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
-        start_states, action_idxs, next_states, rewards, *_ = zip(*transitions)
+        start_states, actions, next_states, rewards, terminated, *_ = zip(*transitions)
 
         start_states = torch.as_tensor(np.stack(start_states), dtype=torch.float32)  # type: ignore
-        actions = torch.as_tensor(np.array(action_idxs), dtype=torch.int64).unsqueeze(1)
+        actions = torch.as_tensor(np.array(actions), dtype=torch.int64).unsqueeze(1)
         next_states = torch.as_tensor(np.stack(next_states), dtype=torch.float32)  # type: ignore
         rewards = torch.as_tensor(np.array(rewards), dtype=torch.float32)
+        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool)
 
         qvals = torch.gather(self.net(start_states), 1, actions).squeeze(1)
-        qvals_target = self.target_net(next_states).detach().numpy().max(axis=1)
+        with torch.no_grad():
+            qvals_target = self.target_net(next_states).max(axis=1)[0] * (~terminated)
         loss = self.loss_function(qvals, rewards + self.gamma * qvals_target)
         return loss
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(action_space={self.action_space})"

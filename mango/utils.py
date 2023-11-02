@@ -32,6 +32,10 @@ class ReplayMemory(Generic[T]):
     def size(self) -> int:
         return len(self.memory)
 
+    @property
+    def can_sample(self, batch_size: Optional[int] = None) -> bool:
+        return self.size >= (batch_size or self.batch_size)
+
     def push(self, item: T) -> None:
         if self.size < self.capacity:
             self.memory.append(item)
@@ -63,10 +67,13 @@ def plot_grid(
     grid_shape: tuple[int, int],
     cell_shape: tuple[int, int],
 ):
-    pixels_per_cell = tuple(64 * s for s in cell_shape)
+    square = 512 / grid_shape[0]
+    pixels_per_cell = tuple(square * s for s in cell_shape)
 
-    offset = (int(64 * 0.2), int(64 * 0.2))
-    width, height = tuple(int(cell_size - 0.4 * 64) for cell_size in pixels_per_cell)
+    offset = (int(square * 0.2), int(square * 0.2))
+    width, height = tuple(
+        int(cell_size - 0.4 * square) for cell_size in pixels_per_cell
+    )
 
     for x in range(grid_shape[0] // cell_shape[0]):
         for y in range(grid_shape[1] // cell_shape[1]):
@@ -77,10 +84,20 @@ def plot_grid(
             plt.gca().add_patch(
                 plt.Rectangle(position, width, height, fc="red", alpha=0.2)  # type: ignore
             )
-            
+
+
 def plot_trajectory(start: int, trajectory: list[int], grid_shape: tuple[int, int]):
+    square = 512 / grid_shape[0]
     for obs in trajectory:
         y1, x1 = np.unravel_index(start, grid_shape)
         y2, x2 = np.unravel_index(obs, grid_shape)
-        plt.plot([x1*64+32, x2*64+32], [y1*64+32, y2*64+32], "k--")
+        plt.plot(
+            [x1 * square + square // 2, x2 * square + square // 2],
+            [y1 * square + square // 2, y2 * square + square // 2],
+            "k--",
+        )
         start = obs
+
+
+def smooth(signal, window=10):
+    return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]

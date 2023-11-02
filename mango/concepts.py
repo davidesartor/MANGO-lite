@@ -21,16 +21,7 @@ class IdentityConcept(Concept[npt.NDArray]):
 @dataclass
 class Int2CoordConcept(Concept[int]):
     global_shape: tuple[int, int]
-
-    def abstract(self, observation: int) -> npt.NDArray:
-        y, x = np.unravel_index(observation, self.global_shape)
-        return np.array([y, x])
-
-
-@dataclass
-class GridPartitionConcept(Concept[int]):
-    global_shape: tuple[int, int]
-    cell_shape: tuple[int, int]
+    cell_shape: tuple[int, int] = (1, 1)
 
     def abstract(self, observation: int) -> npt.NDArray:
         y, x = np.unravel_index(observation, self.global_shape)

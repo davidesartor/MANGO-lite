@@ -33,7 +33,7 @@ class GridCompatibility(ActionCompatibility):
         self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
     ) -> float:
         if np.all(next_state == start_state):
-            return 0.0
+            return -0.1
 
         delta_y, delta_x = next_state - start_state
 
