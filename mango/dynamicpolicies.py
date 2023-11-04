@@ -13,12 +13,14 @@ class DynamicPolicy(Protocol):
     comand_space: gym.spaces.Discrete
     action_space: gym.spaces.Discrete
 
-    def get_action(self, comand: int, state: npt.NDArray) -> int:
+    def get_action(
+        self, comand: int, state: npt.NDArray, randomness: float = 0.0
+    ) -> int:
         ...
 
     def train(
         self,
-        transitions: Sequence[tuple[Transition, Transition]],
+        transitions: Sequence[tuple[Transition, npt.NDArray, npt.NDArray]],
         reward_generator: ActionCompatibility,
     ) -> None:
         ...
@@ -37,21 +39,19 @@ class DQnetPolicyMapper(DynamicPolicy):
             for comand in range(int(self.comand_space.n))
         }
 
-    def get_action(self, comand: int, state: npt.NDArray) -> int:
-        return self.policies[comand].get_action(state)
+    def get_action(self, comand: int, state: npt.NDArray, randomness: float = 0.0):
+        return self.policies[comand].get_action(state, randomness)
 
     def train(
         self,
-        transitions: Sequence[tuple[Transition, Transition]],
+        transitions: Sequence[tuple[Transition, npt.NDArray, npt.NDArray]],
         reward_gen: ActionCompatibility,
     ) -> None:
         for comand, policy in self.policies.items():
-            training_transitions = [
-                t_lower._replace(
-                    reward=reward_gen(comand, t_upper.start_state, t_upper.next_state)
-                )
-                for t_lower, t_upper in transitions
-            ]
+            training_transitions = []
+            for transition_low, start_state_up, next_state_up in transitions:
+                new_reward = reward_gen(comand, start_state_up, next_state_up)
+                training_transitions.append(transition_low._replace(reward=new_reward))
             policy.train(training_transitions)
 
     def __repr__(self) -> str:

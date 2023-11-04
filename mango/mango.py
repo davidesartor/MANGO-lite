@@ -1,15 +1,13 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from math import e
-import re
-from typing import Generic, Optional, Sequence, SupportsFloat, TypeVar
+from typing import Generic, Iterator, Optional, Sequence, SupportsFloat, TypeVar
 import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
 
 from .actions import ActionCompatibility
 from .concepts import Concept, IdentityConcept
-from .dynamicpolicies import DQnetPolicyMapper
+from .dynamicpolicies import DQnetPolicyMapper, DynamicPolicy
 from .utils import ReplayMemory, Transition, torch_style_repr
 
 
@@ -56,14 +54,15 @@ class MangoLayer(Generic[ObsType]):
     action_compatibility: ActionCompatibility
     lower_layer: MangoLayer[ObsType] | MangoEnv[ObsType]
     max_steps: int = 5
-
-    replay_memory: ReplayMemory = field(init=False)
-    policy: DQnetPolicyMapper = field(init=False)
+    replay_memory: ReplayMemory[tuple[Transition, npt.NDArray, npt.NDArray]] = field(
+        init=False, default_factory=ReplayMemory
+    )
+    policy: DynamicPolicy = field(init=False)
     abs_state: npt.NDArray = field(init=False)
+    # record the intrinsic rewards
     debug_log: tuple[list, ...] = field(default_factory=lambda: ([], [], [], []))
 
     def __post_init__(self) -> None:
-        self.replay_memory = ReplayMemory()
         self.policy = DQnetPolicyMapper(
             comand_space=self.action_compatibility.action_space,
             action_space=self.lower_layer.action_space,
@@ -74,46 +73,39 @@ class MangoLayer(Generic[ObsType]):
         return self.action_compatibility.action_space
 
     def step(
-        self, action: int, epsilon: float = 0.0
+        self, action: int, randomness: float = 0.0
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
-        transitions = []
-        env_state_trajectory = []
-        low_state = self.lower_layer.abs_state
-        up_state = self.abs_state
+        states_low = [self.lower_layer.abs_state]
+        states_up = [self.abs_state]
+        env_state_trajectory: list[ObsType] = []
+        transitions_low: list[Transition] = []
 
-        for step in range(max(self.max_steps, 1)):
-            low_action = self.policy.get_action(comand=action, state=low_state)
-            if np.random.rand() < epsilon:
-                low_action = int(self.action_space.sample())
-                
+        for step in range(max((self.max_steps, 1))):
+            low_action = self.policy.get_action(
+                comand=action, state=states_low[-1], randomness=randomness
+            )
             env_state, reward, term, trunc, info = self.lower_layer.step(low_action)
             env_state_trajectory.extend(info["mango:trajectory"])
             self.abs_state = self.concept.abstract(env_state)
-            low_next_state, up_next_state = self.lower_layer.abs_state, self.abs_state
 
-            low_term = term or not np.all(up_state == up_next_state)
-            low_transition = Transition(
-                low_state, low_action, low_next_state, reward, low_term, trunc, info
+            states_low.append(self.lower_layer.abs_state)
+            states_up.append(self.abs_state)
+            transition_low = Transition(
+                states_low[-2], low_action, states_low[-1], reward, term, trunc, info
             )
-            up_transition = Transition(
-                up_state, action, up_next_state, reward, term, trunc, info
-            )
-            transitions.append((low_transition, up_transition))
-            
-            if low_term or trunc:
+            transitions_low.append(transition_low)
+
+            if term or trunc or not np.all(states_up[-1] == states_up[-2]):
                 break
 
-            low_state, up_state = low_next_state, up_next_state
-
-        for t in transitions:
-            self.replay_memory.push(t)
-
-        accumulated_reward = sum([t_low.reward for t_low, t_up in transitions])
-        infos = {k: v for t_low, t_up in transitions for k, v in t_low.info.items()}
+        self.replay_memory.extend(zip(transitions_low, states_up[:-1], states_up[1:]))
+        accumulated_reward = sum(float(t_low.reward) for t_low in transitions_low)
+        infos = {k: v for t_low in transitions_low for k, v in t_low.info.items()}
         infos["mango:trajectory"] = env_state_trajectory
 
+        # for debug log the intrinsic reward
         self.debug_log[action].append(
-            self.action_compatibility(action, up_state, up_next_state)  # type: ignore
+            self.action_compatibility(action, states_up[-1], states_up[-2])
         )
         return env_state, accumulated_reward, term, trunc, infos  # type: ignore
 
@@ -142,44 +134,51 @@ class Mango(Generic[ObsType]):
         base_concept: Concept[ObsType] = IdentityConcept(),
     ) -> None:
         self.environment = MangoEnv(base_concept, environment)
-        self.layers: list[MangoEnv | MangoLayer] = [self.environment]
+        self.abstract_layers: list[MangoLayer[ObsType]] = []
         for concept, compatibility in zip(concepts, action_compatibilities):
-            self.layers.append(MangoLayer(concept, compatibility, self.layers[-1]))
+            self.abstract_layers.append(
+                MangoLayer(concept, compatibility, self.layers[-1])
+            )
         self.reset()
 
     @property
-    def option_space(self) -> tuple[gym.spaces.Discrete, ...]:
-        return tuple(layer.action_space for layer in [self.environment, *self.layers])
-    
+    def layers(self) -> tuple[MangoEnv[ObsType] | MangoLayer[ObsType], ...]:
+        return (self.environment, *self.abstract_layers)
+
     @property
-    def abstract_layers(self) -> tuple[MangoLayer, ...]:
-        return tuple(self.layers[1:]) # type: ignore
+    def option_space(self) -> tuple[gym.spaces.Discrete, ...]:
+        return tuple(layer.action_space for layer in self.layers)
 
     def execute_option(
-        self, action: int, layer_idx: int, epsilon: float = 0.0
+        self, action: int, layer_idx: int, randomness: float = 0.0
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
-        return self.layers[layer_idx].step(action, epsilon)
+        return self.layers[layer_idx].step(action, randomness)
 
     def train(self, layer_idx: int) -> None:
         if layer_idx == 0:
             raise ValueError("Cannot train base layer")
-        layer: MangoLayer = self.layers[layer_idx]  # type: ignore
+        layer = self.abstract_layers[layer_idx - 1]
         if layer.replay_memory.size > 1:
             layer.policy.train(
                 layer.replay_memory.sample(),
                 layer.action_compatibility,
             )
 
-    def explore(self, layer_idx: int, epsilon: float, max_steps: int = 1) -> None:
-        if layer_idx == 0:
-            raise ValueError("Cannot train base layer")
-        self.reset()
+    def explore(
+        self, layer_idx: int, randomness: float, max_steps: int = 1
+    ) -> tuple[ObsType, float, bool, bool, dict]:
+        env_state, info = self.reset()
+        accumulated_reward, term, trunc = 0.0, False, False
         for _ in range(max_steps):
-            self.execute_option(
+            env_state, reward, term, trunc, info = self.execute_option(
                 action=int(self.option_space[layer_idx].sample()),
                 layer_idx=layer_idx,
-                epsilon=epsilon,
+                randomness=randomness,
             )
+            accumulated_reward += float(reward)
+            if term or trunc:
+                break
+        return env_state, accumulated_reward, term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None

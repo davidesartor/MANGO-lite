@@ -1,4 +1,5 @@
 from dataclasses import InitVar, dataclass, field
+import re
 from typing import Any, Protocol, Sequence
 import copy
 import numpy as np
@@ -11,7 +12,9 @@ from .utils import Transition
 
 
 class Policy(Protocol):
-    def get_action(self, state: npt.NDArray) -> int:
+    action_space: gym.spaces.Discrete
+
+    def get_action(self, state: npt.NDArray, randomness: float = 0.0) -> int:
         ...
 
     def train(self, transitions: Sequence[Transition]):
@@ -22,7 +25,7 @@ class Policy(Protocol):
 class RandomPolicy(Policy):
     action_space: gym.spaces.Discrete
 
-    def get_action(self, state: Any) -> int:
+    def get_action(self, state: Any, randomness: float = 0.0) -> int:
         return int(self.action_space.sample())
 
     def train(self, transitions: Sequence[Transition]):
@@ -44,7 +47,7 @@ class DQnetPolicy(Policy):
     target_net: ConvEncoder = field(init=False)
     optimizer: torch.optim.Optimizer = field(init=False)
 
-    def __post_init__(self, lr: float = 1e-4):
+    def __post_init__(self, lr: float):
         self.net = ConvEncoder(in_channels=None, out_features=int(self.action_space.n))
         self.target_net = ConvEncoder(
             in_channels=None, out_features=int(self.action_space.n)
@@ -53,12 +56,13 @@ class DQnetPolicy(Policy):
             params=self.net.parameters(recurse=True), lr=lr
         )
 
-    def get_action(self, state: npt.NDArray) -> int:
+    def get_action(self, state: npt.NDArray, randomness: float = 0.0) -> int:
         self.net.eval()
         tensor_state = torch.as_tensor(state, dtype=torch.float32)
         action_log_prob = self.net.forward(tensor_state.unsqueeze(0))
-        return int(torch.argmax(action_log_prob).item())
-        action_prob = torch.softmax(action_log_prob, dim=-1)
+        if randomness == 0.0:
+            return int(action_log_prob.argmax().item())
+        action_prob = torch.softmax(action_log_prob / randomness, dim=-1)
         action = torch.multinomial(action_prob, num_samples=1)
         return int(action.item())
 
