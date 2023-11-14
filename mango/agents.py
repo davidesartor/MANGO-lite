@@ -22,7 +22,7 @@ class Agent(Generic[ObsType]):
     replay_memory: ReplayMemory[Transition] = field(default_factory=ReplayMemory)
 
     def __post_init__(self):
-        n_options = sum(action_space.n for action_space in self.mango.option_space)
+        n_options = sum(int(action_space.n) for action_space in self.mango.option_space)
         self.policy = DQnetPolicy(action_space=gym.spaces.Discrete(n_options))
 
     def relative_option_idx(self, global_option_idx: int) -> tuple[int, int]:
@@ -33,16 +33,16 @@ class Agent(Generic[ObsType]):
                 break
             action -= int(action_space.n)
             layer_idx += 1
-        return action, layer_idx
+        return layer_idx, action
 
     def step(
         self, env_state: ObsType, randomness: float = 0.0
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
         start_state = self.base_concept.abstract(env_state)
         action = self.policy.get_action(start_state)
-        relative_action, layer_idx = self.relative_option_idx(action)
+        layer_idx, relative_action = self.relative_option_idx(action)
         env_state, reward, term, trunc, info = self.mango.execute_option(
-            action=relative_action, layer_idx=layer_idx, randomness=randomness
+            layer_idx=layer_idx, action=relative_action, randomness=randomness
         )
         next_state = self.base_concept.abstract(env_state)
         self.replay_memory.push(

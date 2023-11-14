@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+import random
 from typing import Generic, Iterator, Optional, Sequence, SupportsFloat, TypeVar
 import gymnasium as gym
 import numpy as np
@@ -25,9 +26,9 @@ class MangoEnv(Generic[ObsType]):
         return self.environment.action_space  # type: ignore
 
     def step(
-        self, action: int, epsilon: float = 0.0
+        self, action: int, randomness: float = 0.0
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
-        if np.random.rand() < epsilon:
+        if np.random.rand() < randomness:
             action = int(self.action_space.sample())
         env_state, reward, term, trunc, info = self.environment.step(action)
         self.abs_state = self.concept.abstract(env_state)
@@ -53,38 +54,39 @@ class MangoLayer(Generic[ObsType]):
     concept: Concept[ObsType]
     action_compatibility: ActionCompatibility
     lower_layer: MangoLayer[ObsType] | MangoEnv[ObsType]
-    max_steps: int = 5
     replay_memory: ReplayMemory[tuple[Transition, npt.NDArray, npt.NDArray]] = field(
         init=False, default_factory=ReplayMemory
     )
     policy: DynamicPolicy = field(init=False)
     abs_state: npt.NDArray = field(init=False)
-    # record the intrinsic rewards
-    debug_log: tuple[list, ...] = field(default_factory=lambda: ([], [], [], []))
+    intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
 
     def __post_init__(self) -> None:
         self.policy = DQnetPolicyMapper(
             comand_space=self.action_compatibility.action_space,
             action_space=self.lower_layer.action_space,
         )
+        self.intrinsic_reward_log = tuple([] for _ in range(self.action_space.n))
 
     @property
     def action_space(self) -> gym.spaces.Discrete:
         return self.action_compatibility.action_space
 
     def step(
-        self, action: int, randomness: float = 0.0
+        self, action: int, randomness: float = 0.0, p_term: float = 0.0
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
         states_low = [self.lower_layer.abs_state]
         states_up = [self.abs_state]
         env_state_trajectory: list[ObsType] = []
         transitions_low: list[Transition] = []
 
-        for step in range(max((self.max_steps, 1))):
+        while True:
             low_action = self.policy.get_action(
                 comand=action, state=states_low[-1], randomness=randomness
             )
-            env_state, reward, term, trunc, info = self.lower_layer.step(low_action)
+            env_state, reward, term, trunc, info = self.lower_layer.step(
+                low_action, randomness=randomness
+            )
             env_state_trajectory.extend(info["mango:trajectory"])
             self.abs_state = self.concept.abstract(env_state)
 
@@ -97,17 +99,18 @@ class MangoLayer(Generic[ObsType]):
 
             if term or trunc or not np.all(states_up[-1] == states_up[-2]):
                 break
+            if random.random() < p_term:
+                break
 
         self.replay_memory.extend(zip(transitions_low, states_up[:-1], states_up[1:]))
-        accumulated_reward = sum(float(t_low.reward) for t_low in transitions_low)
-        infos = {k: v for t_low in transitions_low for k, v in t_low.info.items()}
+        accumulated_reward = sum(float(trans.reward) for trans in transitions_low)
+        infos = {k: v for trans in transitions_low for k, v in trans.info.items()}
         infos["mango:trajectory"] = env_state_trajectory
 
-        # for debug log the intrinsic reward
-        self.debug_log[action].append(
-            self.action_compatibility(action, states_up[-1], states_up[-2])
+        self.intrinsic_reward_log[action].append(
+            self.action_compatibility(action, states_up[0], states_up[-1])
         )
-        return env_state, accumulated_reward, term, trunc, infos  # type: ignore
+        return env_state, accumulated_reward, term, trunc, infos
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -150,30 +153,51 @@ class Mango(Generic[ObsType]):
         return tuple(layer.action_space for layer in self.layers)
 
     def execute_option(
-        self, action: int, layer_idx: int, randomness: float = 0.0
+        self, layer_idx: int, action: int, randomness: float = 0.0, p_term: float = 0.0
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
-        return self.layers[layer_idx].step(action, randomness)
+        if layer_idx == 0:
+            return self.environment.step(action, randomness)
+        return self.abstract_layers[layer_idx - 1].step(
+            action, randomness=randomness, p_term=p_term
+        )
 
-    def train(self, layer_idx: int) -> None:
+    def train(self, layer_idx: int, action: int) -> float | None:
         if layer_idx == 0:
             raise ValueError("Cannot train base layer")
+
         layer = self.abstract_layers[layer_idx - 1]
-        if layer.replay_memory.size > 1:
-            layer.policy.train(
-                layer.replay_memory.sample(),
-                layer.action_compatibility,
-            )
+        loss = layer.policy.train(
+            comand=layer_idx,
+            transitions=layer.replay_memory.sample(),
+            reward_generator=layer.action_compatibility,
+        )
+        return loss
+
+    def train_all(self):
+        for layer_idx, layer in enumerate(self.abstract_layers, start=1):
+            for action in range(layer.action_space.n):
+                self.train(layer_idx, action)
 
     def explore(
-        self, layer_idx: int, randomness: float, max_steps: int = 1
+        self,
+        layer_idx: int | None = None,
+        randomness: float = 1.0,
+        p_term: float = 0.1,
+        episode_length: int = 1,
     ) -> tuple[ObsType, float, bool, bool, dict]:
+        if layer_idx == 0:
+            raise Warning("Exploring base layer works, but is likely a logical error")
+        if layer_idx is None:
+            layer_idx = len(self.layers) - 1
+
         env_state, info = self.reset()
         accumulated_reward, term, trunc = 0.0, False, False
-        for _ in range(max_steps):
+        for _ in range(episode_length):
             env_state, reward, term, trunc, info = self.execute_option(
-                action=int(self.option_space[layer_idx].sample()),
                 layer_idx=layer_idx,
+                action=int(self.option_space[layer_idx].sample()),
                 randomness=randomness,
+                p_term=p_term,
             )
             accumulated_reward += float(reward)
             if term or trunc:

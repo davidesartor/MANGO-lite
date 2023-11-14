@@ -2,6 +2,8 @@ from typing import Sequence
 import torch
 from . import basecells
 
+DEFAULT_ACTIVATION = torch.nn.CELU()
+
 
 class LinearNet(torch.nn.Sequential):
     def __init__(
@@ -9,7 +11,7 @@ class LinearNet(torch.nn.Sequential):
         in_features: int | None,
         out_features: int,
         hidden_features: Sequence[int] = (16,),
-        activation: torch.nn.Module = torch.nn.ReLU(),
+        activation: torch.nn.Module = DEFAULT_ACTIVATION,
         out_activation: torch.nn.Module | None = None,
         batch_norm: bool = True,
         bias: bool = True,
@@ -53,7 +55,7 @@ class ConvNet(torch.nn.Sequential):
         out_channels: int,
         kernel_size: int = 3,
         hidden_channels: Sequence[int] = (16,),
-        activation: torch.nn.Module = torch.nn.ReLU(),
+        activation: torch.nn.Module = DEFAULT_ACTIVATION,
         batch_norm: bool = True,
         residual_connections: bool = False,
         groups: int = 1,
@@ -103,10 +105,10 @@ class ConvEncoder(torch.nn.Sequential):
         in_channels: int | None,
         out_features: int,
         kernel_size: int = 3,
-        hidden_channels: Sequence[int] = (32, 32),
-        hidden_features: Sequence[int] = (32, 32),
-        activation_conv: torch.nn.Module = torch.nn.ReLU(),
-        activation_linear: torch.nn.Module = torch.nn.ReLU(),
+        hidden_channels: Sequence[int] = (64, 64),
+        hidden_features: Sequence[int] = (8, 8),
+        activation_conv: torch.nn.Module = DEFAULT_ACTIVATION,
+        activation_linear: torch.nn.Module = DEFAULT_ACTIVATION,
         residual_connections: bool = False,
         groups: int = 1,
         batch_norm: bool = True,

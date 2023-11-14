@@ -17,7 +17,7 @@ class Policy(Protocol):
     def get_action(self, state: npt.NDArray, randomness: float = 0.0) -> int:
         ...
 
-    def train(self, transitions: Sequence[Transition]):
+    def train(self, transitions: Sequence[Transition]) -> float:
         ...
 
 
@@ -39,10 +39,8 @@ class DQnetPolicy(Policy):
     loss_function = torch.nn.SmoothL1Loss()
     gamma: float = 0.99
     lr: InitVar[float] = 1e-4
-    train_cycles: int = 1
     refresh_timer: tuple[int, int] = (0, 10)
 
-    loss_log: list[float] = field(init=False, default_factory=list)
     net: ConvEncoder = field(init=False)
     target_net: ConvEncoder = field(init=False)
     optimizer: torch.optim.Optimizer = field(init=False)
@@ -58,23 +56,25 @@ class DQnetPolicy(Policy):
 
     def get_action(self, state: npt.NDArray, randomness: float = 0.0) -> int:
         self.net.eval()
-        tensor_state = torch.as_tensor(state, dtype=torch.float32)
-        action_log_prob = self.net.forward(tensor_state.unsqueeze(0))
-        if randomness == 0.0:
-            return int(action_log_prob.argmax().item())
-        action_prob = torch.softmax(action_log_prob / randomness, dim=-1)
-        action = torch.multinomial(action_prob, num_samples=1)
-        return int(action.item())
+        with torch.no_grad():
+            tensor_state = torch.as_tensor(state, dtype=torch.float32)
+            action_log_prob = self.net.forward(tensor_state.unsqueeze(0))
+            if randomness > 0.0:
+                probs = torch.softmax(action_log_prob / randomness, dim=1)
+                return int(torch.multinomial(probs, num_samples=1).item())
+            else:
+                return int(action_log_prob.argmax().item())
 
-    def train(self, transitions: Sequence[Transition]):
+    def train(self, transitions: Sequence[Transition]) -> float | None:
+        if not transitions:
+            return None
         self.net.train()
-        for _ in range(self.train_cycles):
-            loss = self.compute_loss(transitions)
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            self.loss_log.append(float(loss.item()))
+        loss = self.compute_loss(transitions)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
         self.update_target()
+        return float(loss.item())
 
     def update_target(self):
         t, tmax = self.refresh_timer
@@ -96,6 +96,7 @@ class DQnetPolicy(Policy):
         qvals = torch.gather(self.net(start_states), 1, actions).squeeze(1)
         with torch.no_grad():
             qvals_target = self.target_net(next_states).max(axis=1)[0] * (~terminated)
+            # qvals_target[terminated] = -1.0
         loss = self.loss_function(qvals, rewards + self.gamma * qvals_target)
         return loss
 

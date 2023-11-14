@@ -24,7 +24,7 @@ T = TypeVar("T")
 @dataclass(eq=False)
 class ReplayMemory(Generic[T]):
     batch_size: int = 64
-    capacity: int = 2**10
+    capacity: int = 2**13
     last: int = field(default=0, init=False)
     memory: list[T] = field(default_factory=list, init=False)
 
@@ -32,7 +32,6 @@ class ReplayMemory(Generic[T]):
     def size(self) -> int:
         return len(self.memory)
 
-    @property
     def can_sample(self, batch_size: Optional[int] = None) -> bool:
         return self.size >= (batch_size or self.batch_size)
 
@@ -47,6 +46,8 @@ class ReplayMemory(Generic[T]):
         self.memory.extend(items)
 
     def sample(self, quantity: Optional[int] = None) -> list[T]:
+        if not self.can_sample(quantity):
+            return []
         return random.sample(self.memory, min(self.size, (quantity or self.batch_size)))
 
 
@@ -65,6 +66,22 @@ def torch_style_repr(class_name: str, params: dict[str, str]) -> str:
     repr_str = add_indent(repr_str) + "\n)"
     return repr_str
 
+def smooth(signal, window=10):
+    signal = [s for s in signal if s is not None]
+    return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
+
+
+## ultis for frozen lake
+
+from gymnasium.envs.toy_text.frozen_lake import generate_random_map
+
+def generate_map(size=8, p=0.8, mirror=False, random_start=False):
+    env_description = generate_random_map(size=size // 2 if mirror else size, p=p)
+    if random_start:
+        env_description = list(map(lambda row: row.replace("F", "S"), env_description)) 
+    if mirror:
+        env_description = [row[::-1]+ row for row in env_description[::-1] + env_description]
+    return env_description
 
 def plot_grid(
     grid_shape: tuple[int, int],
@@ -102,5 +119,4 @@ def plot_trajectory(start: int, trajectory: list[int], grid_shape: tuple[int, in
         start = obs
 
 
-def smooth(signal, window=10):
-    return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
+

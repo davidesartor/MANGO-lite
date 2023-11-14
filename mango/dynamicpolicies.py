@@ -20,9 +20,10 @@ class DynamicPolicy(Protocol):
 
     def train(
         self,
+        comand: int,
         transitions: Sequence[tuple[Transition, npt.NDArray, npt.NDArray]],
         reward_generator: ActionCompatibility,
-    ) -> None:
+    ) -> float:
         ...
 
 
@@ -30,29 +31,31 @@ class DynamicPolicy(Protocol):
 class DQnetPolicyMapper(DynamicPolicy):
     comand_space: gym.spaces.Discrete
     action_space: gym.spaces.Discrete
-
-    policies: dict[int, Policy] = field(init=False, repr=False)
+    policies: dict[int, Policy] = field(init=False)
+    loss_log: tuple[list[float], ...] = field(init=False)
 
     def __post_init__(self):
         self.policies = {
             comand: DQnetPolicy(action_space=self.action_space)
             for comand in range(int(self.comand_space.n))
         }
+        self.loss_log = tuple([] for _ in range(self.action_space.n))
 
     def get_action(self, comand: int, state: npt.NDArray, randomness: float = 0.0):
         return self.policies[comand].get_action(state, randomness)
 
     def train(
         self,
+        comand: int,
         transitions: Sequence[tuple[Transition, npt.NDArray, npt.NDArray]],
-        reward_gen: ActionCompatibility,
-    ) -> None:
-        for comand, policy in self.policies.items():
-            training_transitions = []
-            for transition_low, start_state_up, next_state_up in transitions:
-                new_reward = reward_gen(comand, start_state_up, next_state_up)
-                training_transitions.append(transition_low._replace(reward=new_reward))
-            policy.train(training_transitions)
+        reward_generator: ActionCompatibility,
+    ) -> float | None:
+        training_transitions = []
+        for transition_low, start_state_up, next_state_up in transitions:
+            new_reward = reward_generator(comand, start_state_up, next_state_up)
+            training_transitions.append(transition_low._replace(reward=new_reward))
+        loss = self.policies[comand].train(transitions=training_transitions)
+        self.loss_log[comand].append(loss)
 
     def __repr__(self) -> str:
         params = {f"{comand}": str(policy) for comand, policy in self.policies.items()}
