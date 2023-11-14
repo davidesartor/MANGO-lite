@@ -28,6 +28,28 @@ class Int2CoordConcept(Concept[int]):
         return np.array([y // self.cell_shape[0], x // self.cell_shape[1]])
 
 
+@dataclass
+class OneHotCondensation(Concept[int]):
+    global_shape: tuple[int, int,int]
+    name: str = "layer 1"
+    condensation_window: tuple[int, int] = (2, 2)
+
+    def abstract(self, observation: int) -> npt.NDArray:
+        #padding = self.global_shape[0]%self.condensation_window[0] != 0 or self.global_shape[1]%self.condensation_window[1] != 0
+        observation = observation.reshape(self.global_shape)
+        # if padding:
+        #     observation = np.pad(observation, 
+        #                          ((0, self.condensation_window[0] - self.global_shape[0]%self.condensation_window[0]), 
+        #                           (0, self.condensation_window[1] - self.global_shape[1]%self.condensation_window[1]), 
+        #                           (0,0)))
+        shape_obs = observation.shape
+        return observation.reshape(shape_obs[0]//self.condensation_window[0], 
+                                   self.condensation_window[0], 
+                                   shape_obs[1]//self.condensation_window[1], 
+                                   self.condensation_window[1], 
+                                   shape_obs[2]).max(axis=(1,3))
+        
+
 @dataclass(frozen=True, eq=False)
 class Strip(Concept[Mapping[str, Any]]):
     key: str | Sequence[str]
@@ -50,3 +72,5 @@ class Strip(Concept[Mapping[str, Any]]):
             raise KeyError(
                 f"Abstraction failed: {input_state} missing keys {self.keys}."
             )
+
+

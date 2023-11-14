@@ -38,9 +38,9 @@ class DQnetPolicy(Policy):
 
     loss_function = torch.nn.SmoothL1Loss()
     gamma: float = 0.99
-    lr: InitVar[float] = 1e-4
+    lr: InitVar[float] = 1e-5
     train_cycles: int = 1
-    refresh_timer: tuple[int, int] = (0, 10)
+    refresh_timer: tuple[int, int] = (0, 30)
 
     loss_log: list[float] = field(init=False, default_factory=list)
     net: ConvEncoder = field(init=False)

@@ -51,7 +51,7 @@ class DQnetPolicyMapper(DynamicPolicy):
             training_transitions = []
             for transition_low, start_state_up, next_state_up in transitions:
                 new_reward = reward_gen(comand, start_state_up, next_state_up)
-                training_transitions.append(transition_low._replace(reward=new_reward))
+                training_transitions.append(transition_low._replace(reward=transition_low.reward+new_reward))
             policy.train(training_transitions)
 
     def __repr__(self) -> str:
