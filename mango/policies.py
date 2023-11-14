@@ -96,7 +96,6 @@ class DQnetPolicy(Policy):
         qvals = torch.gather(self.net(start_states), 1, actions).squeeze(1)
         with torch.no_grad():
             qvals_target = self.target_net(next_states).max(axis=1)[0] * (~terminated)
-            # qvals_target[terminated] = -1.0
         loss = self.loss_function(qvals, rewards + self.gamma * qvals_target)
         return loss
 

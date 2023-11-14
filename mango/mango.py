@@ -167,7 +167,7 @@ class Mango(Generic[ObsType]):
 
         layer = self.abstract_layers[layer_idx - 1]
         loss = layer.policy.train(
-            comand=layer_idx,
+            comand=action,
             transitions=layer.replay_memory.sample(),
             reward_generator=layer.action_compatibility,
         )

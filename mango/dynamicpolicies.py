@@ -32,7 +32,6 @@ class DQnetPolicyMapper(DynamicPolicy):
     comand_space: gym.spaces.Discrete
     action_space: gym.spaces.Discrete
     policies: dict[int, Policy] = field(init=False)
-    loss_log: tuple[list[float], ...] = field(init=False)
 
     def __post_init__(self):
         self.policies = {
@@ -56,6 +55,7 @@ class DQnetPolicyMapper(DynamicPolicy):
             training_transitions.append(transition_low._replace(reward=new_reward))
         loss = self.policies[comand].train(transitions=training_transitions)
         self.loss_log[comand].append(loss)
+        return loss
 
     def __repr__(self) -> str:
         params = {f"{comand}": str(policy) for comand, policy in self.policies.items()}
