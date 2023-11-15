@@ -1,125 +1,93 @@
-from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
+
+import numpy as np
+import numpy.typing as npt
 import gymnasium as gym
 from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv, generate_random_map
 
+
 def generate_map(size=8, p=0.8, mirror=False, random_start=False):
-    env_description = generate_random_map(size=size // 2 if mirror else size, p=p)
+    desc = generate_random_map(size=size // 2 if mirror else size, p=p)
     if random_start:
-        env_description = list(map(lambda row: row.replace("F", "S"), env_description)) 
+        desc = list(map(lambda row: row.replace("F", "S"), desc))
     if mirror:
-        env_description = [row[::-1]+ row for row in env_description[::-1] + env_description]
-    return env_description
+        desc = [row[::-1] + row for row in desc[::-1] + desc]
+    return desc
 
-def make_custom_frozen_lake_env():
-    
 
-class CustomFrozenLakeEnv(gym.Wrapper):
-    metadata = {
-        "state_modes": ["agent_pos", "one_hot", "rgb_array", "flattened_one_hot"],
-        "action_modes": ["discrete", "one_hot"],
-        "render_modes": ["rgb_array"],
-        "env_modes": ["training_priors", "training_task"],
-        "render_fps": 4,
-    }
-    element_to_int = {b"S": 0, b"F": 0, b"H": 1, b"G": 2}
-
+class CustomFrozenLakeEnv(FrozenLakeEnv):
     def __init__(
         self,
-        name,
+        render_mode: str | None = "rgb_array",
         desc=None,
-        is_slippery=False,
-        render_mode="rgb_array",
-        state_mode="agent_pos",
-        action_mode="one_hot",
-        env_mode="training_task",
-        grid_size=12,
+        map_name="4x4",
+        is_slippery=True,
+        **kwargs
     ):
-        assert state_mode is None or state_mode in self.metadata["state_modes"]
-        assert action_mode is None or action_mode in self.metadata["action_modes"]
-        assert env_mode is None or env_mode in self.metadata["env_modes"]
-        self.state_mode = state_mode
-        self.action_mode = action_mode
-        self.mode = env_mode
-        self.grid_size = grid_size
-        self.reset(
-            seed=None,
-            options=None,
-            name=name,
-            desc=desc,
-            is_slippery=is_slippery,
-            render_mode=render_mode,
-        )
-        self.desc = self.unwrapped.desc
-        self.observation_space = gym.spaces.Box(
-            0, 1, (self.unwrapped.nrow, self.unwrapped.ncol, 4)
-        )
+        if map_name == "RANDOM":
+            desc = generate_map(**kwargs)
+        super().__init__(render_mode, desc, map_name, is_slippery)
 
-    def _change_state_mode(self, state):
-        if self.state_mode == "agent_pos":
-            return state
-        elif self.state_mode == "one_hot":
-            return self._one_hot_encode_state(state)
-        elif self.state_mode == "flattened_one_hot":
-            return self._one_hot_encode_state(state).flatten()
-        elif self.state_mode == "rgb_array":
-            return self.env.render()
+
+class ReInitOnReset(gym.Wrapper):
+    def __init__(self, env: gym.Env, **init_kwargs):
+        super().__init__(env)
+        self.init_kwargs = init_kwargs
 
     def reset(
-        self,
-        seed=None,
-        options=None,
-        name="FrozenLake-v1",
-        desc=None,
-        is_slippery=False,
-        render_mode="rgb_array",
-    )-> tuple[ObsType, float, bool, bool, dict]:
-        if not desc:
-            env_description = generate_random_map(size=self.grid_size // 2, p=0.8)
-            env_description = list(
-                map(lambda row: row.replace("F", "S"), env_description)
-            )
-            # mirror map both vertically and horizontally
-            desc = [row[::-1] + row for row in env_description[::-1] + env_description]
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[Any, dict[str, Any]]:
+        self.env.__init__(**self.init_kwargs)
+        return self.env.reset(seed=seed, options=options)
 
-        env = gym.make(
-            name,
-            desc=desc,
-            is_slippery=is_slippery,
-            render_mode=render_mode,
-        )
+
+class CoordinateObservation(gym.ObservationWrapper):
+    def __init__(self, env: FrozenLakeEnv):
         super().__init__(env)
-        self.s = self.env.reset(seed=seed, options=options)
-        state, info = self.s
-        return self._change_state_mode(state), info
+        max_coord = max((self.unwrapped.nrow, self.unwrapped.ncol))  # type: ignore
+        self.observation_space = gym.spaces.Box(
+            low=0, high=max_coord, shape=(2,), dtype=np.uint8
+        )
 
-    def step(self, a):
-        self._check_changes()
-        next_state, reward, terminated, truncated, info = self.env.step(a)
-        if reward == 1 and self.mode == "training_priors":
-            reward = 0
-        if terminated and reward == 0:
-            reward = -1
-        self.s = next_state, reward, terminated, truncated, info
-        return self._change_state_mode(next_state), reward, terminated, truncated, info
+    def observation(self, observation: int) -> Any:
+        y, x = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
+        return np.array([y, x], dtype=np.uint8)
 
-    def render(self):
-        x = self.env.render()
-        return x
 
-    def _one_hot_encode_state(self, state):
-        background_discrete = [
-            [self.element_to_int[element] for element in list(row)]
-            for row in self.unwrapped.desc
-        ]
-        background_one_hot = np.eye(3)[background_discrete]
-        agent_state = np.zeros((self.unwrapped.nrow, self.unwrapped.ncol, 1))
-        row, col = divmod(state, self.unwrapped.ncol)
-        agent_state[row, col, 0] = 1
-        encoded_state = np.concatenate([background_one_hot, agent_state], axis=-1)
-        return encoded_state
+class TensorObservation(gym.ObservationWrapper):
+    char2int = {b"S": 1, b"F": 1, b"H": 2, b"G": 3}.get
 
-    def _check_changes(self):
-        row, col = divmod(self.s[0], self.unwrapped.ncol)
-        if self.unwrapped.desc[row, col] == b"G":
-            self.unwrapped.desc[row, col] = b"F"
+    def __init__(self, env: gym.Env, one_hot: bool = False):
+        super().__init__(env)
+        self.one_hot = one_hot
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
+        self.observation_space = (
+            gym.spaces.Box(low=0, high=1, shape=(*map_shape, 4), dtype=np.uint8)
+            if one_hot
+            else gym.spaces.Box(low=0, high=3, shape=map_shape, dtype=np.uint8)
+        )
+
+    def observation(self, observation: int) -> Any:
+        map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]  # type: ignore
+        row, col = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
+        map[row][col] = 0
+        map = np.array(map, dtype=np.uint8)
+        if not self.one_hot:
+            return map
+        one_hot_map = np.zeros((*map.shape, 4), dtype=np.uint8)
+        one_hot_map[np.arange(map.shape[0]), np.arange(map.shape[1]), map] = 1
+        one_hot_map = one_hot_map[:, :, [0, 2, 3]]  # remove the 1="F"|"S" channel
+        return one_hot_map
+
+
+class RenderObservation(gym.ObservationWrapper):
+    def __init__(self, env: gym.Env):
+        super().__init__(env)
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
+        self.observation_space = gym.spaces.Box(
+            low=0, high=255, shape=(*map_shape, 3), dtype=np.uint8
+        )
+
+    def observation(self, observation: int) -> npt.NDArray[np.uint8]:
+        render = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore
+        return render
