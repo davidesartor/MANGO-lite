@@ -1,8 +1,6 @@
-from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 import gymnasium as gym
-
 
 @dataclass(eq=False, slots=True)
 class DummyEnvironment(gym.Env[int, int]):

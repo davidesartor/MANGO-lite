@@ -28,6 +28,24 @@ class Int2CoordConcept(Concept[int]):
         return np.array([y // self.cell_shape[0], x // self.cell_shape[1]])
 
 
+@dataclass
+class OneHotCondensation(Concept[int]):
+    global_shape: tuple[int, int, int]
+    name: str = "layer 1"
+    condensation_window: tuple[int, int] = (2, 2)
+
+    def abstract(self, observation: int) -> npt.NDArray:
+        observation = observation.reshape(self.global_shape)
+        shape_obs = observation.shape
+        return observation.reshape(
+            shape_obs[0] // self.condensation_window[0],
+            self.condensation_window[0],
+            shape_obs[1] // self.condensation_window[1],
+            self.condensation_window[1],
+            shape_obs[2],
+        ).max(axis=(1, 3))
+
+
 @dataclass(frozen=True, eq=False)
 class Strip(Concept[Mapping[str, Any]]):
     key: str | Sequence[str]

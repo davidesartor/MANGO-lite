@@ -32,25 +32,34 @@ class GridCompatibility(ActionCompatibility):
     def __call__(
         self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
     ) -> float:
-        if np.all(next_state == start_state):
-            return -0.1
-
         delta_y, delta_x = next_state - start_state
 
-        # 0 = left
-        if comand == 0:
-            if delta_y == 0 and delta_x == -1:
-                return 1.0
-        # 1 = down
-        elif comand == 1:
-            if delta_y == 1 and delta_x == 0:
-                return 1.0
-        # 2 = right
-        elif comand == 2:
-            if delta_y == 0 and delta_x == 1:
-                return 1.0
-        # 3 = up
-        elif comand == 3:
-            if delta_y == -1 and delta_x == 0:
-                return 1.0
-        return -1.0
+        LEFT, DOWN, RIGHT, UP, STAY = 0, 1, 2, 3, -1
+        transition = {
+            (0, -1): LEFT,
+            (1, 0): DOWN,
+            (0, 1): RIGHT,
+            (-1, 0): UP,
+            (0, 0): STAY,
+        }.get((delta_y, delta_x), None)
+
+        if transition == comand:
+            return 1.0
+        elif transition == STAY:
+            return -0.1
+        else:
+            return -1.0
+
+
+class CondensationCompatibility(GridCompatibility):
+    def __call__(
+        self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
+    ) -> float:
+        grid_shape = start_state.shape[:-1]
+        start_idx = np.argmax(start_state[:, :, -1])
+        next_idx = np.argmax(next_state[:, :, -1])
+        y_start, x_start = np.unravel_index(start_idx, grid_shape)
+        y_next, x_next = np.unravel_index(next_idx, grid_shape)
+        return super().__call__(
+            comand, np.array(y_start, x_start), np.array(y_next, x_next)
+        )
