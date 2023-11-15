@@ -18,7 +18,7 @@ class IdentityConcept(Concept[npt.NDArray]):
         return input_state
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class Int2CoordConcept(Concept[int]):
     global_shape: tuple[int, int]
     cell_shape: tuple[int, int] = (1, 1)
@@ -28,21 +28,17 @@ class Int2CoordConcept(Concept[int]):
         return np.array([y // self.cell_shape[0], x // self.cell_shape[1]])
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class OneHotCondensation(Concept[int]):
-    global_shape: tuple[int, int, int]
-    name: str = "layer 1"
-    condensation_window: tuple[int, int] = (2, 2)
+    cell_shape: tuple[int, int] = (2, 2)
 
-    def abstract(self, observation: int) -> npt.NDArray:
-        observation = observation.reshape(self.global_shape)
-        shape_obs = observation.shape
+    def abstract(self, observation: npt.NDArray) -> npt.NDArray:
         return observation.reshape(
-            shape_obs[0] // self.condensation_window[0],
-            self.condensation_window[0],
-            shape_obs[1] // self.condensation_window[1],
-            self.condensation_window[1],
-            shape_obs[2],
+            observation.shape[0] // self.cell_shape[0],
+            self.cell_shape[0],
+            observation.shape[1] // self.cell_shape[1],
+            self.cell_shape[1],
+            observation.shape[2],
         ).max(axis=(1, 3))
 
 
