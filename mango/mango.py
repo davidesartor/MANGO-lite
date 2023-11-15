@@ -53,7 +53,7 @@ class MangoLayer(Generic[ObsType]):
     action_compatibility: ActionCompatibility
     lower_layer: MangoLayer[ObsType] | MangoEnv[ObsType]
     randomness: float = 0.0
-    p_term: float = 0.1
+    p_term: float = 0.0
     abs_state: npt.NDArray = field(init=False)
     policy: DynamicPolicy = field(init=False)
     intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
