@@ -1,33 +1,33 @@
 from dataclasses import dataclass, field
-from typing import Protocol, Sequence, Callable
+from typing import Protocol, Sequence, Callable, TypeVar
 
 import numpy.typing as npt
 import gymnasium as gym
 
-from .actions import ActionCompatibility
 from .policies import Policy, DQnetPolicy
-from .utils import Transition, torch_style_repr
+from ..utils import Transition, torch_style_repr
 
+ObsType = TypeVar("ObsType", bound=npt.NDArray)
 
-class DynamicPolicy(Protocol):
+class DynamicPolicy(Protocol[ObsType]):
     comand_space: gym.spaces.Discrete
     action_space: gym.spaces.Discrete
 
     def get_action(
-        self, comand: int, state: npt.NDArray, randomness: float = 0.0
+        self, comand: int, state: ObsType, randomness: float = 0.0
     ) -> int:
         ...
 
     def train(
         self,
         comand: int,
-        transitions: Sequence[tuple[Transition, npt.NDArray, npt.NDArray]],
-        reward_generator: ActionCompatibility,
+        transitions: Sequence[Transition],
+        reward_generator: Callable[[int, ObsType, ObsType], float]
     ) -> float:
         ...
 
 
-@dataclass(eq=False, slots=True, repr=False)
+@dataclass(eq=False, slots=True)
 class DQnetPolicyMapper(DynamicPolicy):
     comand_space: gym.spaces.Discrete
     action_space: gym.spaces.Discrete
@@ -46,15 +46,11 @@ class DQnetPolicyMapper(DynamicPolicy):
     def train(
         self,
         comand: int,
-        transitions: Sequence[tuple[Transition, npt.NDArray, npt.NDArray]],
+        transitions: Sequence[Transition],
         reward_generator: ActionCompatibility,
     ) -> float | None:
         training_transitions = []
-        for transition_low, start_state_up, next_state_up in transitions:
-            new_reward = reward_generator(comand, start_state_up, next_state_up)
-            training_transitions.append(transition_low._replace(reward=new_reward))
+        for transition in transitions:
+            new_reward = reward_generator(comand, transition.start_state, transition.next_state)
+            training_transitions.append(transition._replace(reward=new_reward))
         return self.policies[comand].train(transitions=training_transitions)
-
-    def __repr__(self) -> str:
-        params = {f"{comand}": str(policy) for comand, policy in self.policies.items()}
-        return torch_style_repr(self.__class__.__name__, params)

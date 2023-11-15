@@ -10,9 +10,6 @@ ObsType = TypeVar("ObsType")
 
 class ActionCompatibility(Protocol):
     action_space: gym.spaces.Discrete
-    
-    def beta(self, start_state: Any, next_state: Any) -> float:
-        ...
 
     def __call__(
         self, comand: int, start_state: npt.NDArray, next_state: npt.NDArray
