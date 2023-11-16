@@ -41,7 +41,7 @@ class LazyConvNd(_LazyParamDepMixin, conv.LazyConv1d):
         )
 
     def set_class_name(self, input: torch.Tensor) -> None:
-        conv_dim = input.ndim - 2            
+        conv_dim = input.ndim - 2  
         if conv_dim == 1:
             self.__class__ = conv.Conv1d
         elif conv_dim == 2:
@@ -79,6 +79,8 @@ class LazyBatchNormNd(_LazyParamDepMixin, batchnorm.LazyBatchNorm1d):
             self.__class__ = batchnorm.BatchNorm2d
         elif extra_dim == 3:
             self.__class__ = batchnorm.BatchNorm3d
+        else:
+            raise ValueError(f"input shape {input.shape} incompatible with batchnorm")
 
     def set_class_behaviour(self, input: torch.Tensor) -> None:
         self.extra_dim = input.ndim - 2

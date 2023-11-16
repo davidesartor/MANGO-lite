@@ -1,4 +1,5 @@
 from typing import Sequence
+import warnings
 import torch
 from . import basecells
 
@@ -109,6 +110,7 @@ class ConvEncoder(torch.nn.Sequential):
         hidden_features: Sequence[int] = (8, 8),
         activation_conv: torch.nn.Module = DEFAULT_ACTIVATION,
         activation_linear: torch.nn.Module = DEFAULT_ACTIVATION,
+        activation_out: torch.nn.Module | None = None,
         residual_connections: bool = False,
         groups: int = 1,
         batch_norm: bool = True,
@@ -116,42 +118,41 @@ class ConvEncoder(torch.nn.Sequential):
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ):
-        super().__init__()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            super().__init__()
 
-        self._initialized = False
-
-        self.append(basecells.Squeeze(from_dim=2))
-
-        self.append(
-            ConvNet(
-                in_channels=in_channels,
-                out_channels=hidden_channels[-1],
-                kernel_size=kernel_size,
-                hidden_channels=hidden_channels[:-1],
-                activation=activation_conv,
-                batch_norm=batch_norm,
-                residual_connections=residual_connections,
-                groups=groups,
-                bias=bias,
-                device=device,
-                dtype=dtype,
+            self._initialized = False
+            self.append(basecells.Squeeze(from_dim=2))
+            self.append(
+                ConvNet(
+                    in_channels=in_channels,
+                    out_channels=hidden_channels[-1],
+                    kernel_size=kernel_size,
+                    hidden_channels=hidden_channels[:-1],
+                    activation=activation_conv,
+                    batch_norm=batch_norm,
+                    residual_connections=residual_connections,
+                    groups=groups,
+                    bias=bias,
+                    device=device,
+                    dtype=dtype,
+                )
             )
-        )
-
-        self.append(torch.nn.Flatten(start_dim=1))
-
-        self.append(
-            LinearNet(
-                in_features=None,
-                out_features=out_features,
-                hidden_features=hidden_features,
-                activation=activation_linear,
-                batch_norm=batch_norm,
-                bias=bias,
-                device=device,
-                dtype=dtype,
+            self.append(torch.nn.Flatten(start_dim=1))
+            self.append(
+                LinearNet(
+                    in_features=None,
+                    out_features=out_features,
+                    hidden_features=hidden_features,
+                    activation=activation_linear,
+                    out_activation=activation_out,
+                    batch_norm=batch_norm,
+                    bias=bias,
+                    device=device,
+                    dtype=dtype,
+                )
             )
-        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if not self._initialized:
