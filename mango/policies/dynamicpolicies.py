@@ -3,6 +3,7 @@ from typing import Any, Protocol, Sequence, Callable
 
 from .policies import DQnetPolicy
 from ..utils import Transition, ObsType, ActType
+from ..abstractions.actions import AbstractActions
 from .. import spaces
 
 
@@ -19,7 +20,7 @@ class DynamicPolicy(Protocol):
         self,
         comand: ActType,
         transitions: Sequence[Transition],
-        reward_generator: Callable[[ActType, ObsType, ObsType], float],
+        abs_actions: AbstractActions,
     ) -> float | None:
         ...
 
@@ -44,12 +45,20 @@ class DQnetPolicyMapper(DynamicPolicy):
         self,
         comand: ActType,
         transitions: Sequence[Transition],
-        reward_generator: Callable[[ActType, ObsType, ObsType], float],
+        abs_actions: AbstractActions,
     ) -> float | None:
         training_transitions = []
         for transition in transitions:
-            new_reward = reward_generator(
+            new_reward = abs_actions.compatibility(
                 comand, transition.start_obs, transition.next_obs
             )
-            training_transitions.append(transition._replace(reward=new_reward))
+            training_transitions.append(
+                transition._replace(
+                    start_obs=abs_actions.mask(transition.start_obs),
+                    next_obs=abs_actions.mask(transition.next_obs),
+                    reward=new_reward,
+                    truncated=(True if new_reward > 0 else transition.truncated),
+                )
+            )
+
         return self.policies[comand].train(transitions=training_transitions)

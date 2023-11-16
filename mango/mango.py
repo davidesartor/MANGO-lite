@@ -107,7 +107,7 @@ class MangoLayer:
             loss = self.policy.train(
                 comand=action,
                 transitions=self.replay_memory.sample(),
-                reward_generator=self.abstract_actions.compatibility,
+                abs_actions=self.abstract_actions,
             )
             if loss is not None:
                 self.train_loss_log[action].append(loss)

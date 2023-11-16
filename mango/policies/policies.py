@@ -81,17 +81,19 @@ class DQnetPolicy(Policy):
 
     def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
-        start_obs, actions, next_obs, rewards, terminated, *_ = zip(*transitions)
+        start_obs, actions, next_obs, rewards, terminated, truncated, info = zip(*transitions)
 
         start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.float32, device=self.device)  # type: ignore
         actions = torch.as_tensor(np.array(actions), dtype=torch.int64, device=self.device).unsqueeze(1)
         next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.float32, device=self.device)  # type: ignore
         rewards = torch.as_tensor(np.array(rewards), dtype=torch.float32, device=self.device)
-        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=self.device)
+        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=self.device) 
+        truncated = torch.as_tensor(np.array(truncated), dtype=torch.bool, device=self.device)
 
         qvals = torch.gather(self.net(start_obs), 1, actions).squeeze(1)
         with torch.no_grad():
             qvals_target = self.target_net(next_obs).max(axis=1)[0] * (~terminated)
+            qvals_target[truncated] = 1.0
         return torch.nn.functional.smooth_l1_loss(
             qvals, rewards + self.gamma * qvals_target
         )
