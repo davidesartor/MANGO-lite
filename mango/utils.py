@@ -132,7 +132,7 @@ def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
     return obs_list
 
 
-def plot_qval_heatmap(policy, env):
+def plot_qval_heatmap(policy, env, mask):
     qvals = get_qvals_debug(policy, env.all_observations())
     qvals = np.array(qvals).reshape(env.unwrapped.nrow, env.unwrapped.ncol)
     plt.imshow(qvals, cmap="PiYG")

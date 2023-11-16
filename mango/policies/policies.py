@@ -92,8 +92,9 @@ class DQnetPolicy(Policy):
 
         qvals = torch.gather(self.net(start_obs), 1, actions).squeeze(1)
         with torch.no_grad():
-            qvals_target = self.target_net(next_obs).max(axis=1)[0] * (~terminated)
-            qvals_target[truncated] = 1.0
+            qvals_target = self.target_net(next_obs).max(axis=1)[0]
+            qvals_target[terminated] = 0.0
+            qvals_target[truncated] = 1.0 # reward + gamma* reward + gamma^2 * reward + ...
         return torch.nn.functional.smooth_l1_loss(
             qvals, rewards + self.gamma * qvals_target
         )
