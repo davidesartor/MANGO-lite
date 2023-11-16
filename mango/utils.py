@@ -116,9 +116,9 @@ def obs2int(obs, env_shape, onehot=False):
 
 def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
     policy.net.eval()
-    obs_tensor = torch.as_tensor(np.stack(obs_list), dtype=torch.float32)
+    obs_tensor = torch.as_tensor(np.stack(obs_list), dtype=torch.float32, device=policy.device)
     qvals = policy.net(obs_tensor).max(axis=1)[0]
-    return list(qvals.detach().numpy())
+    return list(qvals.cpu().detach().numpy())
 
 
 def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
