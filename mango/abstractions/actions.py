@@ -9,6 +9,9 @@ from .. import spaces
 class AbstractActions(Protocol):
     action_space: spaces.Discrete
 
+    def mask(self, obs: ObsType) -> ObsType:
+        ...
+
     def beta(self, start_obs: ObsType, next_obs: ObsType) -> bool:
         ...
 
@@ -22,6 +25,9 @@ class AbstractActions(Protocol):
 class GridMovement(AbstractActions):
     cell_shape: tuple[int, int]
     action_space: spaces.Discrete = field(init=False, default=spaces.Discrete(4))
+
+    def mask(self, obs: ObsType) -> ObsType:
+        return obs
 
     def beta(self, start_obs: ObsType, next_obs: ObsType) -> bool:
         start_y, start_x = self.obs2yxpos(start_obs)
@@ -64,6 +70,14 @@ class GridMovement(AbstractActions):
 @dataclass(eq=False, slots=True, frozen=True)
 class GridMovementOneHot(GridMovement):
     channel: int = 0
+
+    def mask(self, obs: ObsType) -> ObsType:
+        y, x = self.obs2yxpos(obs)
+        y_min = y *self.cell_shape[0]
+        y_max = y_min + self.cell_shape[0]
+        x_min = x *self.cell_shape[1]
+        x_max = x_min + self.cell_shape[1]
+        return ObsType(obs[:, y_min:y_max, x_min:x_max])
 
     def obs2yxpos(self, obs: ObsType) -> tuple[int, int]:
         y, x = np.unravel_index(np.argmax(obs[self.channel, :, :]), obs.shape[1:])

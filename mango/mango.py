@@ -114,13 +114,18 @@ class MangoLayer:
 
     def iterate_policy(self, comand: ActType) -> Iterator[Transition]:
         start_obs = self.obs
+        start_obs_masked = self.abstract_actions.mask(start_obs)
         while True:
             action = self.policy.get_action(comand, start_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action)
-            yield Transition(start_obs, action, next_obs, reward, term, trunc, info)
-            if term or trunc or self.abstract_actions.beta(self.obs, next_obs):
+            next_obs_masked = self.abstract_actions.mask(next_obs) 
+            yield Transition(
+                start_obs_masked, action, next_obs_masked, reward, term, trunc, info
+            )
+            if term or trunc or  self.abstract_actions.beta(start_obs, next_obs):
                 break
-            self.obs = start_obs = next_obs
+            start_obs = next_obs
+            start_obs_masked = self.abstract_actions.mask(start_obs)
         self.obs = next_obs
 
     def __repr__(self) -> str:
