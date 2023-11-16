@@ -1,30 +1,32 @@
 from dataclasses import dataclass, field
-from typing import Any, Generic, Iterator, Optional, TypeVar
-from typing import Generic, NamedTuple
+from typing import Any, Generic, Iterator, NamedTuple, NewType, Optional, TypeVar
 
 import numpy as np
 from matplotlib import pyplot as plt
-import numpy.typing as npt
 import random
+import torch
+
+# this is not a good way to type this version
+# but it will minimize changes when addin support for generic types
+ObsType = NewType("ObsType", np.ndarray)
+ActType = NewType("ActType", int)
+T = TypeVar("T")
 
 
 class Transition(NamedTuple):
-    start_state: npt.NDArray
-    action: int
-    next_state: npt.NDArray
+    start_obs: ObsType
+    action: ActType
+    next_obs: ObsType
     reward: float
     terminated: bool
     truncated: bool
     info: dict[str, Any]
 
 
-T = TypeVar("T")
-
-
 @dataclass(eq=False)
 class ReplayMemory(Generic[T]):
     batch_size: int = 128
-    capacity: int = 2**13
+    capacity: int = 2**10
     last: int = field(default=0, init=False)
     memory: list[T] = field(default_factory=list, init=False)
 
@@ -95,14 +97,45 @@ def plot_grid(
             )
 
 
-def plot_trajectory(start: int, trajectory: list[int], grid_shape: tuple[int, int]):
+def plot_trajectory(trajectory: list[int], grid_shape: tuple[int, int]):
     square = 512 / grid_shape[0]
-    for obs in trajectory:
-        y1, x1 = np.unravel_index(start, grid_shape)
-        y2, x2 = np.unravel_index(obs, grid_shape)
+    for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
+        y1, x1 = np.unravel_index(start_obs, grid_shape)
+        y2, x2 = np.unravel_index(next_obs, grid_shape)
         plt.plot(
             [x1 * square + square // 2, x2 * square + square // 2],
             [y1 * square + square // 2, y2 * square + square // 2],
             "k--",
         )
-        start = obs
+
+
+def obs2int(obs, env_shape, onehot=False):
+    y, x = np.unravel_index(np.argmax(obs), obs.shape[1:]) if onehot else obs
+    return int(y * env_shape[1] + x)
+
+
+def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
+    policy.net.eval()
+    obs_tensor = torch.as_tensor(np.stack(obs_list), dtype=torch.float32)
+    qvals = policy.net(obs_tensor).max(axis=1)[0]
+    return list(qvals.detach().numpy())
+
+
+def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
+    y_matrix, x_matrix = np.indices(env_shape)
+    obs_list = []
+    for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
+        if not one_hot:
+            obs_list.append(ObsType(np.array([y, x])))
+        else:
+            obs_list.append(np.zeros((1, *env_shape), dtype=np.uint8))
+            obs_list[-1][0, y, x] = 1
+    return obs_list
+
+
+def plot_qval_heatmap(policy, env_shape: tuple[int, int], one_hot=False):
+    qvals = get_qvals_debug(policy, get_all_coords(env_shape, one_hot))
+    qvals = np.array(qvals).reshape(*env_shape)
+    plt.imshow(qvals, cmap="PiYG")
+    # colorbar on bottom
+    plt.colorbar(orientation="horizontal")
