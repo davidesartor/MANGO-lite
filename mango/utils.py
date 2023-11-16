@@ -120,7 +120,6 @@ def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
     qvals = policy.net(obs_tensor).max(axis=1)[0]
     return list(qvals.cpu().detach().numpy())
 
-
 def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
     y_matrix, x_matrix = np.indices(env_shape)
     obs_list = []
@@ -133,9 +132,9 @@ def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
     return obs_list
 
 
-def plot_qval_heatmap(policy, env_shape: tuple[int, int], one_hot=False):
-    qvals = get_qvals_debug(policy, get_all_coords(env_shape, one_hot))
-    qvals = np.array(qvals).reshape(*env_shape)
+def plot_qval_heatmap(policy, env):
+    qvals = get_qvals_debug(policy, env.all_observations())
+    qvals = np.array(qvals).reshape(env.unwrapped.nrow, env.unwrapped.ncol)
     plt.imshow(qvals, cmap="PiYG")
     # colorbar on bottom
     plt.colorbar(orientation="horizontal")

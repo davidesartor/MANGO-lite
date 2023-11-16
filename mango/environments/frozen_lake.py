@@ -5,6 +5,7 @@ import numpy.typing as npt
 import gymnasium as gym
 from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv, generate_random_map
 from .. import spaces
+from ..utils import ActType, ObsType
 
 
 def generate_map(size=8, p=0.8, mirror=False, random_start=False, hide_goal=False):
@@ -56,13 +57,25 @@ class CoordinateObservation(gym.ObservationWrapper):
             else gym.spaces.Box(low=0, high=1, shape=(1, *map_shape), dtype=np.uint8)
         )
 
-    def observation(self, observation: int) -> Any:
+    def observation(self, observation: int) -> ObsType:
         y, x = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
         if not self.one_hot:
-            return np.array([y, x], dtype=np.uint8)
+            return ObsType(np.array([y, x], dtype=np.uint8))
         one_hot = np.zeros((1, self.unwrapped.nrow, self.unwrapped.ncol), dtype=np.uint8)  # type: ignore
         one_hot[0, y, x] = 1
-        return one_hot
+        return ObsType(one_hot)
+    
+    def all_observations(self) -> list[ObsType]:
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
+        y_matrix, x_matrix = np.indices(map_shape)
+        obs_list = []
+        for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
+            if not self.one_hot:
+                obs_list.append(ObsType(np.array([y, x])))
+            else:
+                obs_list.append(np.zeros((1, *map_shape), dtype=np.uint8))
+                obs_list[-1][0, y, x] = 1
+        return obs_list
 
 
 class TensorObservation(gym.ObservationWrapper):
@@ -78,17 +91,36 @@ class TensorObservation(gym.ObservationWrapper):
             else gym.spaces.Box(low=0, high=3, shape=(1, *map_shape), dtype=np.uint8)
         )
 
-    def observation(self, observation: int) -> Any:
+    def observation(self, observation: int) -> ObsType:
         map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]  # type: ignore
         row, col = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
         map[row][col] = 0
         map = np.array(map, dtype=np.uint8)
         if not self.one_hot:
-            return map[None, :, :]
+            return ObsType(map[None, :, :])
         one_hot_map = np.zeros((4, *map.shape), dtype=np.uint8)
-        one_hot_map[map, np.arange(map.shape[0]), np.arange(map.shape[1])] = 1
+        Y, X = np.indices(map.shape)
+        one_hot_map[map, Y, X] = 1
         one_hot_map = one_hot_map[[0, 2, 3], :, :]  # remove the 1="F"|"S" channel
-        return one_hot_map
+        return ObsType(one_hot_map)
+    
+    def all_observations(self) -> list[ObsType]:
+        base_map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]  # type: ignore
+        base_map = np.array(base_map, dtype=np.uint8)
+        
+        y_matrix, x_matrix = np.indices(base_map.shape)
+        obs_list = []
+        for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
+            map = base_map.copy()
+            map[y, x] = 0
+            if not self.one_hot:
+                obs_list.append(ObsType(map[None, :, :]))
+            else:
+                one_hot_map = np.zeros((4, *map.shape), dtype=np.uint8)
+                Y, X = np.indices(map.shape)
+                one_hot_map[map, Y, X] = 1 
+                obs_list.append(ObsType(one_hot_map[[0, 2, 3], :, :]))
+        return obs_list
 
 
 class RenderObservation(gym.ObservationWrapper):
@@ -99,6 +131,6 @@ class RenderObservation(gym.ObservationWrapper):
             low=0, high=255, shape=(3, *map_shape), dtype=np.uint8
         )
 
-    def observation(self, observation: int) -> npt.NDArray[np.uint8]:
+    def observation(self, observation: int) -> ObsType:
         render = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore
-        return render
+        return ObsType(render)
