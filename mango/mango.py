@@ -24,8 +24,9 @@ class MangoEnv:
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         if self.verbose_indent is not None:
             print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
-        self.obs, reward, term, trunc, info = self.environment.step(action)
-        info["mango:trajectory"] = [self.obs]
+        obs, reward, term, trunc, info = self.environment.step(action)
+        info["mango:trajectory"] = [self.obs, obs]
+        self.obs = obs
         return self.obs, float(reward), term, trunc, info
 
     def reset(
@@ -61,6 +62,7 @@ class MangoLayer:
             comand_space=self.action_space,
             action_space=self.lower_layer.action_space,
             policy_params=policy_params,
+            obs_transform=self.abstract_actions.mask,
         )
         self.intrinsic_reward_log = tuple([] for _ in self.action_space)
         self.train_loss_log = tuple([] for _ in self.action_space)
@@ -79,9 +81,8 @@ class MangoLayer:
         trajectory = [self.obs]
         accumulated_reward = 0.0
         transitions = [*self.iterate_policy(comand=action)]
-
         trajectory += list(
-            chain.from_iterable(trans.info["mango:trajectory"] for trans in transitions)
+            chain.from_iterable(trans.info["mango:trajectory"][1:] for trans in transitions)
         )
         accumulated_reward = sum(trans.reward for trans in transitions)
         term = any(trans.terminated for trans in transitions)
@@ -107,7 +108,7 @@ class MangoLayer:
             loss = self.policy.train(
                 comand=action,
                 transitions=self.replay_memory.sample(),
-                abs_actions=self.abstract_actions,
+                reward_generator=self.abstract_actions.compatibility,
             )
             if loss is not None:
                 self.train_loss_log[action].append(loss)
@@ -115,12 +116,11 @@ class MangoLayer:
     def iterate_policy(self, comand: ActType) -> Iterator[Transition]:
         start_obs = self.obs
         while True:
-            action = self.policy.get_action(
-                comand, self.abstract_actions.mask(start_obs), self.randomness
-            )
+            action = self.policy.get_action(comand, start_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action)
+            info["mango:beta"] = self.abstract_actions.beta(start_obs, next_obs)
             yield Transition(start_obs, action, next_obs, reward, term, trunc, info)
-            if term or trunc or self.abstract_actions.beta(start_obs, next_obs):
+            if term or trunc or info["mango:beta"]:
                 break
             start_obs = next_obs
         self.obs = next_obs

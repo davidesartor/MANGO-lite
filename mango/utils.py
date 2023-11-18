@@ -82,9 +82,7 @@ def plot_grid(
     pixels_per_cell = tuple(square * s for s in cell_shape)
 
     offset = (int(square * 0.2), int(square * 0.2))
-    width, height = tuple(
-        int(cell_size - 0.4 * square) for cell_size in pixels_per_cell
-    )
+    width, height = tuple(int(cell_size - 0.4 * square) for cell_size in pixels_per_cell)
 
     for x in range(grid_shape[0] // cell_shape[0]):
         for y in range(grid_shape[1] // cell_shape[1]):
@@ -97,44 +95,31 @@ def plot_grid(
             )
 
 
-def plot_trajectory(trajectory: list[int], grid_shape: tuple[int, int]):
-    square = 512 / grid_shape[0]
+def plot_trajectory(trajectory: list[ObsType] | list[int], env):
+    if not isinstance(trajectory[0], int):
+        trajectory = [env.observation_inv(obs) for obs in trajectory]
+    square = env.unwrapped.cell_size
     for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
-        y1, x1 = np.unravel_index(start_obs, grid_shape)
-        y2, x2 = np.unravel_index(next_obs, grid_shape)
+        y1, x1 = np.unravel_index(start_obs, env.unwrapped.desc.shape)
+        y2, x2 = np.unravel_index(next_obs, env.unwrapped.desc.shape)
         plt.plot(
-            [x1 * square + square // 2, x2 * square + square // 2],
-            [y1 * square + square // 2, y2 * square + square // 2],
+            [x1 * square[1] + square[1] // 2, x2 * square[1] + square[1] // 2],
+            [y1 * square[0] + square[0] // 2, y2 * square[0] + square[0] // 2],
             "k--",
         )
 
 
-def obs2int(obs, env_shape, onehot=False):
-    y, x = np.unravel_index(np.argmax(obs), obs.shape[1:]) if onehot else obs
-    return int(y * env_shape[1] + x)
-
-
 def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
     policy.net.eval()
-    obs_tensor = torch.as_tensor(np.stack(obs_list), dtype=torch.float32, device=policy.device)
+    obs_tensor = torch.as_tensor(
+        np.stack(obs_list), dtype=torch.float32, device=policy.device
+    )
     qvals = policy.net(obs_tensor).max(axis=1)[0]
     return list(qvals.cpu().detach().numpy())
 
-def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
-    y_matrix, x_matrix = np.indices(env_shape)
-    obs_list = []
-    for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
-        if not one_hot:
-            obs_list.append(ObsType(np.array([y, x])))
-        else:
-            obs_list.append(np.zeros((1, *env_shape), dtype=np.uint8))
-            obs_list[-1][0, y, x] = 1
-    return obs_list
 
-
-def plot_qval_heatmap(policy, env, mask):
-    qvals = get_qvals_debug(policy, env.all_observations())
+def plot_qval_heatmap(policy, env, mask=lambda x: x):
+    qvals = get_qvals_debug(policy, [mask(obs) for obs in env.all_observations()])
     qvals = np.array(qvals).reshape(env.unwrapped.nrow, env.unwrapped.ncol)
     plt.imshow(qvals, cmap="PiYG")
-    # colorbar on bottom
-    plt.colorbar(orientation="horizontal")
+    plt.colorbar()

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -64,7 +64,11 @@ class CoordinateObservation(gym.ObservationWrapper):
         one_hot = np.zeros((1, self.unwrapped.nrow, self.unwrapped.ncol), dtype=np.uint8)  # type: ignore
         one_hot[0, y, x] = 1
         return ObsType(one_hot)
-    
+
+    def observation_inv(self, obs: ObsType) -> int:
+        y, x = np.unravel_index(np.argmax(obs[0]), obs.shape[1:]) if self.onehot else obs
+        return int(y * self.unwrapped.ncol + x)  # type: ignore
+
     def all_observations(self) -> list[ObsType]:
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
         y_matrix, x_matrix = np.indices(map_shape)
@@ -103,11 +107,16 @@ class TensorObservation(gym.ObservationWrapper):
         one_hot_map[map, Y, X] = 1
         one_hot_map = one_hot_map[[0, 2, 3], :, :]  # remove the 1="F"|"S" channel
         return ObsType(one_hot_map)
-    
+
+    def observation_inv(self, obs: ObsType) -> int:
+        agent_idx = np.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
+        y, x = np.unravel_index(agent_idx, obs.shape[1:])
+        return int(y * self.unwrapped.ncol + x)  # type: ignore
+
     def all_observations(self) -> list[ObsType]:
         base_map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]  # type: ignore
         base_map = np.array(base_map, dtype=np.uint8)
-        
+
         y_matrix, x_matrix = np.indices(base_map.shape)
         obs_list = []
         for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
@@ -118,7 +127,7 @@ class TensorObservation(gym.ObservationWrapper):
             else:
                 one_hot_map = np.zeros((4, *map.shape), dtype=np.uint8)
                 Y, X = np.indices(map.shape)
-                one_hot_map[map, Y, X] = 1 
+                one_hot_map[map, Y, X] = 1
                 obs_list.append(ObsType(one_hot_map[[0, 2, 3], :, :]))
         return obs_list
 

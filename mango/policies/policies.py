@@ -36,8 +36,9 @@ class DQnetPolicy(Policy):
 
     net_params: InitVar[dict[str, Any]] = dict()
     lr: InitVar[float] = 1e-4
-    gamma: float = field(default=0.5, repr=False)
+    gamma: float = field(default=0.9, repr=False)
     refresh_timer: tuple[int, int] = field(default=(0, 10), repr=False)
+    learn_terminal_qval: bool = field(default=False, repr=False)
 
     net: ConvEncoder = field(init=False, repr=False)
     target_net: ConvEncoder = field(init=False, repr=False)
@@ -82,19 +83,23 @@ class DQnetPolicy(Policy):
     def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
         start_obs, actions, next_obs, rewards, terminated, truncated, info = zip(*transitions)
+        terminated_option = list(map(lambda i: i.get("mango:terminated_option", False), info))
 
-        start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.float32, device=self.device)  # type: ignore
-        actions = torch.as_tensor(np.array(actions), dtype=torch.int64, device=self.device).unsqueeze(1)
-        next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.float32, device=self.device)  # type: ignore
+        start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.float32, device=self.device)
+        actions = torch.as_tensor(np.array(actions), dtype=torch.int64, device=self.device)
+        next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.float32, device=self.device)
         rewards = torch.as_tensor(np.array(rewards), dtype=torch.float32, device=self.device)
-        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=self.device) 
-        truncated = torch.as_tensor(np.array(truncated), dtype=torch.bool, device=self.device)
+        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=self.device)
+        terminated_option = torch.as_tensor(np.array(terminated_option), dtype=torch.bool, device=self.device)
 
-        qvals = torch.gather(self.net(start_obs), 1, actions).squeeze(1)
+        qvals = torch.gather(self.net(start_obs), 1, actions.unsqueeze(1)).squeeze(1)
         with torch.no_grad():
             qvals_target = self.target_net(next_obs).max(axis=1)[0]
             qvals_target[terminated] = 0.0
-            qvals_target[truncated] = 1.0 # reward + gamma* reward + gamma^2 * reward + ...
-        return torch.nn.functional.smooth_l1_loss(
-            qvals, rewards + self.gamma * qvals_target
-        )
+            qvals_target[terminated_option] = 1.0  # reward + gamma * reward + gamma^2 * reward + ...
+        loss = torch.nn.functional.smooth_l1_loss(qvals, rewards + self.gamma * qvals_target)
+        
+        if self.learn_terminal_qval:
+            qvals_terminal = self.net(next_obs[terminated]).max(axis=1)[0]
+            loss += torch.nn.functional.smooth_l1_loss(qvals_terminal, qvals_target[terminated])
+        return loss
