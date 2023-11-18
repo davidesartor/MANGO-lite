@@ -6,7 +6,7 @@ from typing import Any, Iterator, Optional, Sequence
 import gymnasium as gym
 
 from . import spaces
-from .abstractions.actions import AbstractActions
+from .actions.abstract_actions import AbstractActions
 from .policies.dynamicpolicies import DQnetPolicyMapper, DynamicPolicy
 from .utils import ReplayMemory, Transition, ObsType, ActType, torch_style_repr
 

@@ -3,7 +3,7 @@ from typing import Any, Protocol, Sequence, Callable
 
 from .policies import DQnetPolicy
 from ..utils import Transition, ObsType, ActType
-from ..abstractions.actions import AbstractActions
+from ..actions.abstract_actions import AbstractActions
 from .. import spaces
 
 

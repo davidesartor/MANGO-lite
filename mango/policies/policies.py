@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from .. import spaces
-from .neuralnetworks.networks import ConvEncoder
+from ..neuralnetworks.networks import ConvEncoder
 from ..utils import Transition, ObsType, ActType
 
 
