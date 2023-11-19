@@ -67,7 +67,7 @@ class CoordinateObservation(gym.ObservationWrapper):
         return ObsType(one_hot)
 
     def observation_inv(self, obs: ObsType) -> int:
-        y, x = np.unravel_index(np.argmax(obs[0]), obs.shape[1:]) if self.onehot else obs
+        y, x = np.unravel_index(np.argmax(obs[0]), obs.shape[1:]) if self.one_hot else obs
         return int(y * self.unwrapped.ncol + x)  # type: ignore
 
     @cached_property

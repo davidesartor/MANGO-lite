@@ -45,7 +45,7 @@ class MangoEnv:
 
 @dataclass(eq=False, slots=True, repr=False)
 class MangoLayer:
-    abstract_actions: AbstractActions
+    abs_actions: AbstractActions
     lower_layer: MangoLayer | MangoEnv
     policy_params: InitVar[dict[str, Any]] = dict()
     verbose_indent: Optional[int] = None
@@ -62,7 +62,7 @@ class MangoLayer:
             comand_space=self.action_space,
             action_space=self.lower_layer.action_space,
             policy_params=policy_params,
-            obs_transform=self.abstract_actions.mask,
+            obs_transform=self.abs_actions.mask,
         )
         self.intrinsic_reward_log = tuple([] for _ in self.action_space)
         self.train_loss_log = tuple([] for _ in self.action_space)
@@ -70,7 +70,7 @@ class MangoLayer:
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return self.abstract_actions.action_space
+        return self.abs_actions.action_space
 
     def step(
         self, action: ActType, verbose=False
@@ -78,23 +78,21 @@ class MangoLayer:
         if self.verbose_indent is not None:
             print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
 
-        trajectory = [self.obs]
-        accumulated_reward = 0.0
-        transitions = [*self.iterate_policy(comand=action)]
-        trajectory += list(
-            chain.from_iterable(trans.info["mango:trajectory"][1:] for trans in transitions)
-        )
-        accumulated_reward = sum(trans.reward for trans in transitions)
-        term = any(trans.terminated for trans in transitions)
-        trunc = any(trans.truncated for trans in transitions)
-        info = {k: v for trans in transitions for k, v in trans.info.items()}
+        trajectory, reward, term, trunc, info = [self.obs], 0.0, False, False, {}
+        for transition in self.iterate_policy(comand=action):
+            self.replay_memory.push(transition)
+            trajectory += transition.info["mango:trajectory"][1:]
+            reward += transition.reward
+            term = transition.terminated or term
+            trunc = transition.truncated or trunc
+            info.update(transition.info)
         info["mango:trajectory"] = trajectory
-        self.replay_memory.extend(iter(transitions))
 
-        self.intrinsic_reward_log[action].append(
-            self.abstract_actions.compatibility(action, trajectory[0], trajectory[-1])
-        )
-        return self.obs, accumulated_reward, term, trunc, info
+        if info["mango:terminated"]:
+            self.intrinsic_reward_log[action].append(
+                self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
+            )
+        return self.obs, reward, term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -108,7 +106,7 @@ class MangoLayer:
             loss = self.policy.train(
                 comand=action,
                 transitions=self.replay_memory.sample(),
-                reward_generator=self.abstract_actions.compatibility,
+                reward_generator=self.abs_actions.compatibility,
             )
             if loss is not None:
                 self.train_loss_log[action].append(loss)
@@ -118,9 +116,10 @@ class MangoLayer:
         while True:
             action = self.policy.get_action(comand, start_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action)
-            info["mango:beta"] = self.abstract_actions.beta(start_obs, next_obs)
+            mango_term, mango_trunc = self.abs_actions.beta(comand, start_obs, next_obs)
+            info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
             yield Transition(start_obs, action, next_obs, reward, term, trunc, info)
-            if term or trunc or info["mango:beta"]:
+            if term or trunc or mango_term or mango_trunc:
                 break
             start_obs = next_obs
         self.obs = next_obs
@@ -128,7 +127,7 @@ class MangoLayer:
     def __repr__(self) -> str:
         return torch_style_repr(
             self.__class__.__name__,
-            dict(abs_actions=str(self.abstract_actions), policy=str(self.policy)),
+            dict(abs_actions=str(self.abs_actions), policy=str(self.policy)),
         )
 
 

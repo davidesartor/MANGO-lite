@@ -49,12 +49,12 @@ class DQnetPolicyMapper(DynamicPolicy):
         transitions: Sequence[Transition],
         reward_generator: Callable[[ActType, ObsType, ObsType], float],
     ) -> float | None:
-        training_transitions = map(
-            lambda t: t._replace(
-                start_obs=self.obs_transform(t.start_obs),
-                next_obs=self.obs_transform(t.next_obs),
-                reward=reward_generator(comand, t.start_obs, t.next_obs),
-            ),
-            transitions,
-        )
-        return self.policies[comand].train(transitions=list(training_transitions))
+        training_transitions = [
+            trans._replace(
+                start_obs=self.obs_transform(trans.start_obs),
+                next_obs=self.obs_transform(trans.next_obs),
+                reward=reward_generator(comand, trans.start_obs, trans.next_obs),
+            )
+            for trans in transitions
+        ]
+        return self.policies[comand].train(transitions=training_transitions)
