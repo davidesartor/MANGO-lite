@@ -30,7 +30,7 @@ class DQnetPolicyMapper(DynamicPolicy):
     comand_space: spaces.Discrete
     action_space: spaces.Discrete
     policy_params: InitVar[dict[str, Any]] = dict()
-    obs_transform: Callable[[ObsType], ObsType] = lambda x: x
+    obs_transform: Callable[[ObsType], ObsType] = field(default=lambda x: x, repr=False)
     policies: dict[ActType, DQnetPolicy] = field(init=False, repr=False)
 
     def __post_init__(self, policy_params):

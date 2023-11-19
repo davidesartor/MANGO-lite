@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Any, Callable, Optional
 
 import numpy as np
@@ -69,16 +70,15 @@ class CoordinateObservation(gym.ObservationWrapper):
         y, x = np.unravel_index(np.argmax(obs[0]), obs.shape[1:]) if self.onehot else obs
         return int(y * self.unwrapped.ncol + x)  # type: ignore
 
+    @cached_property
     def all_observations(self) -> list[ObsType]:
-        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
-        y_matrix, x_matrix = np.indices(map_shape)
+        s = self.unwrapped.s  # type: ignore
         obs_list = []
+        y_matrix, x_matrix = np.indices((self.unwrapped.nrow, self.unwrapped.ncol))  # type: ignore
         for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
-            if not self.one_hot:
-                obs_list.append(ObsType(np.array([y, x])))
-            else:
-                obs_list.append(np.zeros((1, *map_shape), dtype=np.uint8))
-                obs_list[-1][0, y, x] = 1
+            self.unwrapped.s = int(y * self.unwrapped.ncol + x)  # type: ignore
+            obs_list.append(self.observation(self.unwrapped.s))  # type: ignore
+        self.unwrapped.s = s  # type: ignore
         return obs_list
 
 
@@ -113,22 +113,15 @@ class TensorObservation(gym.ObservationWrapper):
         y, x = np.unravel_index(agent_idx, obs.shape[1:])
         return int(y * self.unwrapped.ncol + x)  # type: ignore
 
+    @cached_property
     def all_observations(self) -> list[ObsType]:
-        base_map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]  # type: ignore
-        base_map = np.array(base_map, dtype=np.uint8)
-
-        y_matrix, x_matrix = np.indices(base_map.shape)
+        s = self.unwrapped.s  # type: ignore
         obs_list = []
+        y_matrix, x_matrix = np.indices((self.unwrapped.nrow, self.unwrapped.ncol))  # type: ignore
         for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
-            map = base_map.copy()
-            map[y, x] = 0
-            if not self.one_hot:
-                obs_list.append(ObsType(map[None, :, :]))
-            else:
-                one_hot_map = np.zeros((4, *map.shape), dtype=np.uint8)
-                Y, X = np.indices(map.shape)
-                one_hot_map[map, Y, X] = 1
-                obs_list.append(ObsType(one_hot_map[[0, 2, 3], :, :]))
+            self.unwrapped.s = int(y * self.unwrapped.ncol + x)  # type: ignore
+            obs_list.append(self.observation(self.unwrapped.s))  # type: ignore
+        self.unwrapped.s = s  # type: ignore
         return obs_list
 
 

@@ -44,7 +44,7 @@ class Grid2dMovement(AbstractActions):
         next_y, next_x = self.obs2coord(next_obs)
         if start_y != next_y or start_x != next_x:
             return True
-        return random.random() < 0.1
+        return random.random() < 0.01
 
     def compatibility(
         self, action: ActType, start_obs: ObsType, next_obs: ObsType
@@ -59,14 +59,8 @@ class Grid2dMovement(AbstractActions):
         next_y, next_x = self.obs2coord(next_obs)
         delta_y, delta_x = act2delta[Grid2dActions(action)]
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
-        if next_y_expected < 0:
-            next_y_expected = 0
-        if next_x_expected < 0:
-            next_x_expected = 0
-        if next_y_expected >= self.grid_shape[0]:
-            next_y_expected = self.grid_shape[0] - 1
-        if next_x_expected >= self.grid_shape[1]:
-            next_x_expected = self.grid_shape[1] - 1
+        next_y_expected = max(0, min(self.grid_shape[0] - 1, next_y_expected))
+        next_x_expected = max(0, min(self.grid_shape[1] - 1, next_x_expected))
 
         if next_y == next_y_expected and next_x == next_x_expected:
             return 0.1
@@ -86,13 +80,13 @@ class Grid2dMovementOneHot(Grid2dMovement):
 
     def mask(self, obs: ObsType) -> ObsType:
         """mask the obs to the local cell + edge"""
-        # padded_obs = np.zeros((obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2))
-        # padded_obs[:, 1:-1, 1:-1] = obs
+        padded_obs = np.zeros((obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2))
+        padded_obs[:, 1:-1, 1:-1] = obs
 
         # add a channel with 0=padd, 1=valid
-        padded_obs = np.zeros((obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2))
-        padded_obs[:-1, 1:-1, 1:-1] = obs
-        padded_obs[-1, 1:-1, 1:-1] = 1
+        # padded_obs = np.zeros((obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2))
+        # padded_obs[:-1, 1:-1, 1:-1] = obs
+        # padded_obs[-1, 1:-1, 1:-1] = 1
 
         y, x = self.obs2coord(obs)
         y_min = y * self.cell_shape[0]

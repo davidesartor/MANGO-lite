@@ -25,8 +25,8 @@ class Transition(NamedTuple):
 
 @dataclass(eq=False)
 class ReplayMemory(Generic[T]):
-    batch_size: int = 128
-    capacity: int = 2**10
+    batch_size: int = 256
+    capacity: int = 2**14
     last: int = field(default=0, init=False)
     memory: list[T] = field(default_factory=list, init=False)
 
@@ -118,8 +118,8 @@ def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
     return list(qvals.cpu().detach().numpy())
 
 
-def plot_qval_heatmap(policy, env, mask=lambda x: x):
-    qvals = get_qvals_debug(policy, [mask(obs) for obs in env.all_observations()])
+def plot_qval_heatmap(policy, env, mask=lambda x: x, **kwargs):
+    qvals = get_qvals_debug(policy, [mask(obs) for obs in env.all_observations])
     qvals = np.array(qvals).reshape(env.unwrapped.nrow, env.unwrapped.ncol)
-    plt.imshow(qvals, cmap="PiYG")
+    plt.imshow(qvals, **kwargs)
     plt.colorbar()
