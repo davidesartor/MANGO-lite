@@ -72,9 +72,7 @@ class MangoLayer:
     def action_space(self) -> spaces.Discrete:
         return self.abs_actions.action_space
 
-    def step(
-        self, action: ActType, verbose=False
-    ) -> tuple[ObsType, float, bool, bool, dict]:
+    def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         if self.verbose_indent is not None:
             print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
 

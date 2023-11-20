@@ -29,6 +29,14 @@ class Grid2dActions(IntEnum):
     DOWN = 1
     RIGHT = 2
     UP = 3
+    
+    def to_delta(self) -> tuple[int, int]:
+        return {
+            Grid2dActions.LEFT: (0, -1),
+            Grid2dActions.DOWN: (1, 0),
+            Grid2dActions.RIGHT: (0, 1),
+            Grid2dActions.UP: (-1, 0),
+        }[self]
 
 
 @dataclass(eq=False, slots=True, repr=True)
@@ -58,29 +66,17 @@ class Grid2dMovement(AbstractActions):
     def compatibility(
         self, action: ActType, start_obs: ObsType, next_obs: ObsType
     ) -> float:
-        act2delta = {
-            Grid2dActions.LEFT: (0, -1),
-            Grid2dActions.DOWN: (1, 0),
-            Grid2dActions.RIGHT: (0, 1),
-            Grid2dActions.UP: (-1, 0),
-        }
         start_y, start_x = self.obs2coord(start_obs)
         next_y, next_x = self.obs2coord(next_obs)
-        delta_y, delta_x = act2delta[Grid2dActions(action)]
+        delta_y, delta_x = Grid2dActions.to_delta(Grid2dActions(action))
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
-        next_y_expected = max(
-            0, min(self.grid_shape[0] // self.cell_shape[0] - 1, next_y_expected)
-        )
-        next_x_expected = max(
-            0, min(self.grid_shape[1] // self.cell_shape[1] - 1, next_x_expected)
-        )
 
         if next_y == next_y_expected and next_x == next_x_expected:
             return self.reward
-        elif delta_y == 0 and delta_x == 0:
+        elif next_y == start_y and next_x == start_x:
             return 0.0
         else:
-            return -self.reward
+            return -1.0
 
 
 @dataclass(eq=False, slots=True, repr=True)
@@ -97,13 +93,13 @@ class Grid2dMovementOnehot(Grid2dMovement):
         if obs.shape[0] == 1:
             return obs
 
-        if not self.add_valid_channel:
-            padded_obs = np.zeros((obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2))
-            padded_obs[:, 1:-1, 1:-1] = obs
-        else:
+        if self.add_valid_channel:
             padded_obs = np.zeros((obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2))
             padded_obs[:-1, 1:-1, 1:-1] = obs
             padded_obs[-1, 1:-1, 1:-1] = 1
+        else:
+            padded_obs = np.zeros((obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2))
+            padded_obs[:, 1:-1, 1:-1] = obs
 
         y, x = self.obs2coord(obs)
         y_lims = (y * self.cell_shape[0], y * self.cell_shape[0] + self.cell_shape[0] + 2)

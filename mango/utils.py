@@ -4,7 +4,7 @@ from typing import Any, Generic, Iterator, NamedTuple, NewType, Optional, TypeVa
 import numpy as np
 from matplotlib import pyplot as plt
 import random
-import torch
+
 
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
@@ -74,49 +74,16 @@ def smooth(signal, window=10):
     return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
 
 
-def plot_grid(env, cell_shape: tuple[int, int]):
-    grid_shape = env.unwrapped.desc.shape
-    pixels_in_square = env.unwrapped.cell_size
-    pixels_in_cell = tuple(s * c for s, c in zip(cell_shape, pixels_in_square))
+def plot_loss_reward(mango, actions):
+    plt.figure(figsize=(12, 6))
+    for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
+        for action in actions:
+            plt.subplot(2, len(mango.abstract_layers), 2 * (layer_idx - 1) + 1)
+            plt.title(f"loss Layer {layer_idx}")
+            plt.semilogy(smooth(layer.train_loss_log[action]), label=f"{action.name}")
+            plt.legend()
 
-    offset = tuple(int(s * 0.2) for s in pixels_in_square)
-    width, height = tuple(
-        int(c - 0.4 * s) for s, c in zip(pixels_in_square, pixels_in_cell)
-    )
-    for x in range(grid_shape[0] // cell_shape[0]):
-        for y in range(grid_shape[1] // cell_shape[1]):
-            position = tuple(p * c + o for p, c, o in zip((x, y), pixels_in_cell, offset))
-            plt.gca().add_patch(
-                plt.Rectangle(position, width, height, fc="red", alpha=0.2)  # type: ignore
-            )
-
-
-def plot_trajectory(trajectory: list[ObsType] | list[int], env):
-    if not isinstance(trajectory[0], int):
-        trajectory = [env.observation_inv(obs) for obs in trajectory]
-    square = env.unwrapped.cell_size
-    for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
-        y1, x1 = np.unravel_index(start_obs, env.unwrapped.desc.shape)
-        y2, x2 = np.unravel_index(next_obs, env.unwrapped.desc.shape)
-        plt.plot(
-            [x1 * square[1] + square[1] // 2, x2 * square[1] + square[1] // 2],
-            [y1 * square[0] + square[0] // 2, y2 * square[0] + square[0] // 2],
-            "k--",
-        )
-
-
-def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
-    policy.net.eval()
-    obs_tensor = torch.as_tensor(
-        np.stack(obs_list), dtype=torch.float32, device=policy.device
-    )
-    qvals = policy.net(obs_tensor).max(axis=1)[0]
-    return list(qvals.cpu().detach().numpy())
-
-
-def plot_qval_heatmap(policy, env, mask=lambda x: x, **kwargs):
-    qvals = get_qvals_debug(policy, [mask(obs) for obs in env.all_observations])
-    qvals = np.array(qvals).reshape(env.unwrapped.nrow, env.unwrapped.ncol)
-    plt.imshow(qvals, **kwargs)
-    plt.colorbar()
-    return qvals
+            plt.subplot(2, len(mango.abstract_layers), 2 * (layer_idx - 1) + 2)
+            plt.title(f"reward Layer {layer_idx}")
+            plt.plot(smooth(layer.intrinsic_reward_log[action]), label=f"{action.name}")
+            plt.legend()
