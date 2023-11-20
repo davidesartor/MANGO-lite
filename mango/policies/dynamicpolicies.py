@@ -3,6 +3,7 @@ from typing import Any, Protocol, Sequence, Callable
 
 from .policies import DQnetPolicy
 from ..utils import Transition, ObsType, ActType
+from ..actions.abstract_actions import AbstractActions
 from .. import spaces
 
 
@@ -19,7 +20,7 @@ class DynamicPolicy(Protocol):
         self,
         comand: ActType,
         transitions: Sequence[Transition],
-        reward_generator: Callable[[ActType, ObsType, ObsType], float],
+        abs_actions: AbstractActions,
     ) -> float | None:
         ...
 
@@ -29,6 +30,7 @@ class DQnetPolicyMapper(DynamicPolicy):
     comand_space: spaces.Discrete
     action_space: spaces.Discrete
     policy_params: InitVar[dict[str, Any]] = dict()
+    obs_transform: Callable[[ObsType], ObsType] = field(default=lambda x: x, repr=False)
     policies: dict[ActType, DQnetPolicy] = field(init=False, repr=False)
 
     def __post_init__(self, policy_params):
@@ -38,6 +40,7 @@ class DQnetPolicyMapper(DynamicPolicy):
         }
 
     def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0):
+        obs = self.obs_transform(obs)
         return self.policies[comand].get_action(obs, randomness)
 
     def train(
@@ -46,10 +49,12 @@ class DQnetPolicyMapper(DynamicPolicy):
         transitions: Sequence[Transition],
         reward_generator: Callable[[ActType, ObsType, ObsType], float],
     ) -> float | None:
-        training_transitions = []
-        for transition in transitions:
-            new_reward = reward_generator(
-                comand, transition.start_obs, transition.next_obs
+        training_transitions = [
+            trans._replace(
+                start_obs=self.obs_transform(trans.start_obs),
+                next_obs=self.obs_transform(trans.next_obs),
+                reward=reward_generator(comand, trans.start_obs, trans.next_obs),
             )
-            training_transitions.append(transition._replace(reward=new_reward))
+            for trans in transitions
+        ]
         return self.policies[comand].train(transitions=training_transitions)

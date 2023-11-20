@@ -35,17 +35,13 @@ class LinearCell(nn.Sequential):
         if in_features:
             if batch_norm:
                 self.append(nn.BatchNorm1d(in_features, **factory_params))
-
             self.append(nn.Linear(in_features, out_features, bias, **factory_params))
-
             if activation is not None:
                 self.append(activation)
         else:
             if batch_norm:
                 self.append(nn.LazyBatchNorm1d(**factory_params))
-
             self.append(nn.LazyLinear(out_features, bias, **factory_params))
-
             if activation is not None:
                 self.append(activation)
 

@@ -4,7 +4,7 @@ from typing import Any, Generic, Iterator, NamedTuple, NewType, Optional, TypeVa
 import numpy as np
 from matplotlib import pyplot as plt
 import random
-import torch
+
 
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
@@ -25,7 +25,7 @@ class Transition(NamedTuple):
 
 @dataclass(eq=False)
 class ReplayMemory(Generic[T]):
-    batch_size: int = 128
+    batch_size: int = 256
     capacity: int = 2**10
     last: int = field(default=0, init=False)
     memory: list[T] = field(default_factory=list, init=False)
@@ -74,68 +74,16 @@ def smooth(signal, window=10):
     return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
 
 
-def plot_grid(
-    grid_shape: tuple[int, int],
-    cell_shape: tuple[int, int],
-):
-    square = 512 / grid_shape[0]
-    pixels_per_cell = tuple(square * s for s in cell_shape)
+def plot_loss_reward(mango, actions):
+    plt.figure(figsize=(12, 6))
+    for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
+        for action in actions:
+            plt.subplot(2, len(mango.abstract_layers), 2 * (layer_idx - 1) + 1)
+            plt.title(f"loss Layer {layer_idx}")
+            plt.semilogy(smooth(layer.train_loss_log[action]), label=f"{action.name}")
+            plt.legend()
 
-    offset = (int(square * 0.2), int(square * 0.2))
-    width, height = tuple(
-        int(cell_size - 0.4 * square) for cell_size in pixels_per_cell
-    )
-
-    for x in range(grid_shape[0] // cell_shape[0]):
-        for y in range(grid_shape[1] // cell_shape[1]):
-            position = (
-                x * pixels_per_cell[0] + offset[0],
-                y * pixels_per_cell[1] + offset[1],
-            )
-            plt.gca().add_patch(
-                plt.Rectangle(position, width, height, fc="red", alpha=0.2)  # type: ignore
-            )
-
-
-def plot_trajectory(trajectory: list[int], grid_shape: tuple[int, int]):
-    square = 512 / grid_shape[0]
-    for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
-        y1, x1 = np.unravel_index(start_obs, grid_shape)
-        y2, x2 = np.unravel_index(next_obs, grid_shape)
-        plt.plot(
-            [x1 * square + square // 2, x2 * square + square // 2],
-            [y1 * square + square // 2, y2 * square + square // 2],
-            "k--",
-        )
-
-
-def obs2int(obs, env_shape, onehot=False):
-    y, x = np.unravel_index(np.argmax(obs), obs.shape[1:]) if onehot else obs
-    return int(y * env_shape[1] + x)
-
-
-def get_qvals_debug(policy, obs_list: list[ObsType]) -> list[float]:
-    policy.net.eval()
-    obs_tensor = torch.as_tensor(np.stack(obs_list), dtype=torch.float32, device=policy.device)
-    qvals = policy.net(obs_tensor).max(axis=1)[0]
-    return list(qvals.cpu().detach().numpy())
-
-
-def get_all_coords(env_shape: tuple[int, int], one_hot=False) -> list[ObsType]:
-    y_matrix, x_matrix = np.indices(env_shape)
-    obs_list = []
-    for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
-        if not one_hot:
-            obs_list.append(ObsType(np.array([y, x])))
-        else:
-            obs_list.append(np.zeros((1, *env_shape), dtype=np.uint8))
-            obs_list[-1][0, y, x] = 1
-    return obs_list
-
-
-def plot_qval_heatmap(policy, env_shape: tuple[int, int], one_hot=False):
-    qvals = get_qvals_debug(policy, get_all_coords(env_shape, one_hot))
-    qvals = np.array(qvals).reshape(*env_shape)
-    plt.imshow(qvals, cmap="PiYG")
-    # colorbar on bottom
-    plt.colorbar(orientation="horizontal")
+            plt.subplot(2, len(mango.abstract_layers), 2 * (layer_idx - 1) + 2)
+            plt.title(f"reward Layer {layer_idx}")
+            plt.plot(smooth(layer.intrinsic_reward_log[action]), label=f"{action.name}")
+            plt.legend()

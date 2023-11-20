@@ -80,24 +80,18 @@ class ConvNet(torch.nn.Sequential):
 
         layer_sizes = [in_channels, *hidden_channels, out_channels]
         for i, (in_size, out_size) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
-            if residual_connections:
-                self.append(
-                    basecells.ResConvCell(
-                        in_channels=in_size,
-                        out_channels=out_size,
-                        dilation=2**i,
-                        **cell_params,
-                    )
-                )
+            if residual_connections and i > 0:
+                cell_class = basecells.ResConvCell
             else:
-                self.append(
-                    basecells.ConvCell(
-                        in_channels=in_size,
-                        out_channels=out_size,
-                        dilation=2**i,
-                        **cell_params,
-                    )
+                cell_class = basecells.ConvCell
+            self.append(
+                cell_class(
+                    in_channels=in_size,
+                    out_channels=out_size,
+                    dilation=2**i,
+                    **cell_params,
                 )
+            )
 
 
 class ConvEncoder(torch.nn.Sequential):
