@@ -117,7 +117,7 @@ class RenderObservation(gym.ObservationWrapper):
         return ObsType(render)
 
 
-def plot_grid(env, cell_shape: tuple[int, int]):
+def plot_grid(env, cell_shape: tuple[int, int], alpha=0.2):
     grid_shape = env.unwrapped.desc.shape
     pixels_in_square = env.unwrapped.cell_size
     pixels_in_cell = tuple(s * c for s, c in zip(cell_shape, pixels_in_square))
@@ -130,7 +130,7 @@ def plot_grid(env, cell_shape: tuple[int, int]):
         for y in range(grid_shape[1] // cell_shape[1]):
             position = tuple(p * c + o for p, c, o in zip((x, y), pixels_in_cell, offset))
             plt.gca().add_patch(
-                plt.Rectangle(position, width, height, fc="red", alpha=0.2)  # type: ignore
+                plt.Rectangle(position, width, height, fc="red", alpha=alpha)  # type: ignore
             )
 
 
