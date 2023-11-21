@@ -1,8 +1,10 @@
-from typing import Any
+from typing import Any, Optional
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import gymnasium as gym
+from gymnasium.utils import seeding
 from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv, generate_random_map
 import torch
 from .. import spaces
@@ -10,14 +12,68 @@ from ..utils import ActType, ObsType
 from ..actions.abstract_actions import Grid2dActions
 
 
-def generate_map(size=8, p=0.8, mirror=False, random_start=False, hide_goal=False):
-    desc = generate_random_map(size=size // 2 if mirror else size, p=p)
-    if hide_goal:
-        desc = list(map(lambda row: row.replace("G", "F"), desc))
-    if random_start:
-        desc = list(map(lambda row: row.replace("F", "S"), desc))
+def connected_component(
+    board: npt.NDArray[np.character], contains: tuple[int, int]
+) -> npt.NDArray[np.bool_]:
+    contains = contains[0] % board.shape[0], contains[1] % board.shape[1]
+    frontier, reachable = [contains], np.zeros_like(board, dtype=bool)
+    while frontier:
+        r, c = frontier.pop()
+        if reachable[r, c] or board[r, c] == "H":
+            continue
+        reachable[r, c] = True
+        for x, y in [(r + 1, c), (r, c + 1), (r - 1, c), (r, c - 1)]:
+            if 0 <= x < board.shape[0] and 0 <= y < board.shape[1]:
+                frontier.append((x, y))
+    return reachable
+
+
+def sample_position_in(admissible: npt.NDArray[np.bool_], np_random) -> tuple[int, int]:
+    r, c = np_random.integers(0, admissible.shape[0], size=2)  # type: ignore
+    while admissible[r, c] == False:
+        r, c = np_random.integers(0, admissible.shape[0], size=2)  # type: ignore
+    return r, c
+
+
+def random_board(
+    shape: tuple[int, int], p: float, np_random, contains: Optional[tuple[int, int]] = None
+) -> tuple[npt.NDArray[np.character], npt.NDArray[np.bool_]]:
+    if contains is None:
+        contains = sample_position_in(np.ones(shape, dtype=bool), np_random)
+    while True:
+        board = np_random.choice(["F", "H"], shape, p=[p, 1 - p])
+        connected = connected_component(board, contains=contains)
+        if connected.sum() >= (~connected).sum():
+            return board, connected
+
+
+def generate_map(
+    shape=(8, 8),
+    p=0.8,
+    start_pos: tuple[int, int] | None = (0, 0),
+    goal_pos: tuple[int, int] | None = (-1, -1),
+    multi_start=False,
+    mirror=False,
+    seed: Optional[int] = None,
+):
+    if p < 0 or p > 1:
+        raise ValueError("p must be in [0, 1]")
+    np_random, _ = seeding.np_random(seed)
+    if start_pos is not None and goal_pos is not None:
+        board, connected = random_board(shape, p, np_random, contains=goal_pos)
+        while not connected[start_pos]:
+            board, connected = random_board(shape, p, np_random, contains=goal_pos)
+    else:
+        board, connected = random_board(shape, p, np_random, contains=goal_pos or start_pos)
+        start_pos = start_pos or sample_position_in(connected, np_random)
+        goal_pos = goal_pos or sample_position_in(connected, np_random)
+    board[start_pos] = "S"
+    if multi_start:
+        board[connected] = "S"
+    board[goal_pos] = "G"
+    desc = ["".join(x) for x in board]
     if mirror:
-        desc = [row[::-1] + row for row in desc[::-1] + desc]
+        desc = [row[::-1] + row[shape[0] % 2 :] for row in desc[::-1] + desc[shape[1] % 2 :]]
     return desc
 
 
@@ -123,9 +179,7 @@ def plot_grid(env, cell_shape: tuple[int, int], alpha=0.2):
     pixels_in_cell = tuple(s * c for s, c in zip(cell_shape, pixels_in_square))
 
     offset = tuple(int(s * 0.2) for s in pixels_in_square)
-    width, height = tuple(
-        int(c - 0.4 * s) for s, c in zip(pixels_in_square, pixels_in_cell)
-    )
+    width, height = tuple(int(c - 0.4 * s) for s, c in zip(pixels_in_square, pixels_in_cell))
     for x in range(grid_shape[0] // cell_shape[0]):
         for y in range(grid_shape[1] // cell_shape[1]):
             position = tuple(p * c + o for p, c, o in zip((x, y), pixels_in_cell, offset))
@@ -164,9 +218,7 @@ def all_observations(env) -> tuple[list[ObsType], list[bool]]:
 def get_qval(policy, obs_list: list[ObsType]) -> tuple[np.ndarray, np.ndarray]:
     with torch.no_grad():
         policy.net.eval()
-        obs_tensor = torch.as_tensor(
-            np.stack(obs_list), dtype=torch.float32, device=policy.device
-        )
+        obs_tensor = torch.as_tensor(np.stack(obs_list), dtype=torch.float32, device=policy.device)
         best_qvals, actions = policy.net(obs_tensor).max(axis=1)
     return best_qvals.cpu().detach().numpy(), actions.cpu().detach().numpy()
 
