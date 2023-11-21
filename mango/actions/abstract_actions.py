@@ -13,14 +13,10 @@ class AbstractActions(Protocol):
     def mask(self, obs: ObsType) -> ObsType:
         return obs
 
-    def beta(
-        self, action: ActType, start_obs: ObsType, next_obs: ObsType
-    ) -> tuple[bool, bool]:
+    def beta(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> tuple[bool, bool]:
         ...
 
-    def compatibility(
-        self, action: ActType, start_obs: ObsType, next_obs: ObsType
-    ) -> float:
+    def compatibility(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> float:
         ...
 
 
@@ -29,7 +25,7 @@ class Grid2dActions(IntEnum):
     DOWN = 1
     RIGHT = 2
     UP = 3
-    
+
     def to_delta(self) -> tuple[int, int]:
         return {
             Grid2dActions.LEFT: (0, -1),
@@ -54,18 +50,14 @@ class Grid2dMovement(AbstractActions):
     def mask(self, obs: ObsType) -> ObsType:
         return obs
 
-    def beta(
-        self, action: ActType, start_obs: ObsType, next_obs: ObsType
-    ) -> tuple[bool, bool]:
+    def beta(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> tuple[bool, bool]:
         start_y, start_x = self.obs2coord(start_obs)
         next_y, next_x = self.obs2coord(next_obs)
         if start_y != next_y or start_x != next_x:
             return True, False
         return False, random.random() < self.p_termination
 
-    def compatibility(
-        self, action: ActType, start_obs: ObsType, next_obs: ObsType
-    ) -> float:
+    def compatibility(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> float:
         start_y, start_x = self.obs2coord(start_obs)
         next_y, next_x = self.obs2coord(next_obs)
         delta_y, delta_x = Grid2dActions.to_delta(Grid2dActions(action))

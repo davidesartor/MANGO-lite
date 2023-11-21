@@ -89,27 +89,21 @@ class ConvCell(nn.Sequential):
         elif conv_dim == 1:
             if batch_norm:
                 self.append(nn.BatchNorm1d(in_channels, **factory_params))
-            self.append(
-                nn.Conv1d(in_channels, out_channels, **conv_params, **factory_params)
-            )
+            self.append(nn.Conv1d(in_channels, out_channels, **conv_params, **factory_params))
             if activation is not None:
                 self.append(activation)
 
         elif conv_dim == 2:
             if batch_norm:
                 self.append(nn.BatchNorm2d(in_channels, **factory_params))
-            self.append(
-                nn.Conv2d(in_channels, out_channels, **conv_params, **factory_params)
-            )
+            self.append(nn.Conv2d(in_channels, out_channels, **conv_params, **factory_params))
             if activation is not None:
                 self.append(activation)
 
         elif conv_dim == 3:
             if batch_norm:
                 self.append(nn.BatchNorm3d(in_channels, **factory_params))
-            self.append(
-                nn.Conv3d(in_channels, out_channels, **conv_params, **factory_params)
-            )
+            self.append(nn.Conv3d(in_channels, out_channels, **conv_params, **factory_params))
             if activation is not None:
                 self.append(activation)
 

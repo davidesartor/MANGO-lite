@@ -38,9 +38,7 @@ class MangoEnv:
         return self.obs, info
 
     def __repr__(self) -> str:
-        return torch_style_repr(
-            self.__class__.__name__, dict(environment=str(self.environment))
-        )
+        return torch_style_repr(self.__class__.__name__, dict(environment=str(self.environment)))
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -142,9 +140,7 @@ class Mango:
         self.environment = MangoEnv(environment, verbose_indent=indents[-1])
         self.abstract_layers: list[MangoLayer] = []
         for actions, indent in zip(abstract_actions, reversed(indents[:-1])):
-            self.abstract_layers.append(
-                MangoLayer(actions, self.layers[-1], policy_params, indent)
-            )
+            self.abstract_layers.append(MangoLayer(actions, self.layers[-1], policy_params, indent))
         self.reset()
 
     @property

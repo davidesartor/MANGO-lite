@@ -210,7 +210,7 @@ def all_observations(env) -> tuple[list[ObsType], list[bool]]:
     for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
         env.unwrapped.s = int(y * env.unwrapped.ncol + x)  # type: ignore
         obs_list.append(env.observation(env.unwrapped.s))
-        valid_mask.append(not env.unwrapped.desc[y, x] == b"H")  # type: ignore
+        valid_mask.append(not (env.unwrapped.desc[y, x] == b"H" or env.unwrapped.desc[y, x] == b"G"))  # type: ignore
     env.unwrapped.s = s  # type: ignore
     return obs_list, valid_mask
 
