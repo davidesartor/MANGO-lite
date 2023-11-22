@@ -10,6 +10,8 @@ import random
 # but it will minimize changes when addin support for generic types
 ObsType = NewType("ObsType", np.ndarray)
 ActType = NewType("ActType", int)
+OptionType = ActType | tuple[int, ActType]
+
 T = TypeVar("T")
 
 

@@ -7,7 +7,7 @@ import numpy as np
 from . import spaces
 from .actions.abstract_actions import AbstractActions
 from .policies.dynamicpolicies import DQnetPolicyMapper, DynamicPolicy
-from .utils import ReplayMemory, Transition, ObsType, ActType, torch_style_repr
+from .utils import ReplayMemory, Transition, ObsType, ActType, OptionType, torch_style_repr
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -55,7 +55,7 @@ class MangoLayer:
 
     def __post_init__(self, policy_params):
         self.policy = DQnetPolicyMapper(
-            comand_space=self.action_space,
+            comand_space=self.abs_actions.action_space,
             action_space=self.lower_layer.action_space,
             policy_params=policy_params,
             obs_transform=self.abs_actions.mask,
@@ -66,7 +66,7 @@ class MangoLayer:
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return self.abs_actions.action_space
+        return self.policy.action_space
 
     @property
     def obs(self) -> ObsType:
@@ -104,11 +104,12 @@ class MangoLayer:
         return self.lower_layer.reset(seed=seed, options=options)
 
     def train(self, action: Optional[ActType | Sequence[ActType]] = None):
-        to_train: Sequence[ActType] = {
-            isinstance(action, int): [action],
-            isinstance(action, Sequence): action,
-            action is None: [act for act in self.action_space],
-        }.get(True, [])
+        if isinstance(action, int):
+            to_train = [action]
+        elif isinstance(action, Sequence):
+            to_train = action
+        elif action is None:
+            to_train = [act for act in self.action_space]
         for action in to_train:
             loss = self.policy.train(
                 comand=action,
@@ -153,11 +154,13 @@ class Mango:
     def option_space(self) -> spaces.Discrete:
         return spaces.Discrete(sum(int(layer.action_space.n) for layer in self.layers))
 
-    def relative_option_idx(self, option_idx: int) -> tuple[int, ActType]:
+    def relative_option_idx(self, option: OptionType) -> tuple[int, ActType]:
+        if isinstance(option, tuple):
+            return option
         offsets = np.cumsum([layer.action_space.n for layer in self.layers])
-        layer = int(np.searchsorted(option_idx, offsets))
-        action = option_idx if layer == 0 else option_idx - offsets[layer - 1]
-        return layer, ActType(action)
+        layer = int(np.searchsorted(option, offsets))
+        action = option if layer == 0 else ActType(option - offsets[layer - 1])
+        return layer, action
 
     def set_randomness(self, randomness: float, layer: Optional[int] = None):
         if layer == 0:
@@ -166,12 +169,8 @@ class Mango:
         for layer in layers_to_set:
             self.abstract_layers[layer - 1].randomness = randomness
 
-    def execute_option(
-        self, option_idx: int | tuple[int, ActType]
-    ) -> tuple[ObsType, float, bool, bool, dict]:
-        layer, action = (
-            self.relative_option_idx(option_idx) if isinstance(option_idx, int) else option_idx
-        )
+    def step(self, option: OptionType) -> tuple[ObsType, float, bool, bool, dict]:
+        layer, action = self.relative_option_idx(option)
         if self.verbose:
             print(f"MANGO: Executing option {action} at layer {layer}")
         obs, reward, term, trunc, info = self.layers[layer].step(action)
@@ -182,16 +181,20 @@ class Mango:
     def train(
         self,
         layer: Optional[int | Sequence[int]] = None,
-        action: Optional[ActType | Sequence[ActType]] = None,
+        options: Optional[Sequence[OptionType]] = None,
     ):
-        if layer is None and action is None:
-            raise Warning("Training same action in all layers")
-        layers_to_train: Sequence[int] = {
-            isinstance(layer, int): [layer],
-            isinstance(layer, Sequence): layer,
-            layer is None: range(1, len(self.layers)),
-        }.get(True, [])
-        for layer in layers_to_train:
+        if options is not None:
+            if layer is not None:
+                raise ValueError("Cannot specify both layer and options")
+            to_train = [self.relative_option_idx(o) for o in options]
+        else:
+            if layer is None:
+                layer = range(1, len(self.layers))
+            elif isinstance(layer, int):
+                layer = [layer]
+            to_train = [(l, None) for l in layer]
+
+        for layer, action in to_train:
             if layer == 0:
                 raise ValueError("Cannot train environment actions")
             self.abstract_layers[layer % len(self.layers) - 1].train(action)
@@ -208,7 +211,7 @@ class Mango:
         accumulated_reward, term, trunc = 0.0, False, False
         for _ in range(episode_length):
             action = ActType(int(self.layers[layer].action_space.sample()))
-            obs, reward, term, trunc, info = self.execute_option((layer, action))
+            obs, reward, term, trunc, info = self.step((layer, action))
             accumulated_reward += reward
             if term or trunc:
                 break
