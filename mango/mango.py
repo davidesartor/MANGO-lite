@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import InitVar, dataclass, field
 from typing import Any, Iterator, Optional, Sequence
+import pickle
 import gymnasium as gym
 import numpy as np
 
@@ -225,3 +226,13 @@ class Mango:
     def __repr__(self) -> str:
         params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
         return torch_style_repr(self.__class__.__name__, params)
+
+    def save_to(self, path: str):
+        self.reset()
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load_from(cls, path: str) -> Mango:
+        with open(path, "rb") as f:
+            return pickle.load(f)
