@@ -1,9 +1,11 @@
 from __future__ import annotations
 from dataclasses import InitVar, dataclass, field
 from itertools import chain
+import itertools
 import random
 from typing import Any, Iterator, Optional, Sequence
 import gymnasium as gym
+import numpy as np
 
 from . import spaces
 from .actions.abstract_actions import AbstractActions
@@ -96,8 +98,12 @@ class MangoLayer:
         self.obs, info = self.lower_layer.reset(seed=seed, options=options)
         return self.obs, info
 
-    def train(self, action: Optional[ActType] = None):
-        to_train = self.action_space if action is None else [action]
+    def train(self, action: Optional[ActType | Sequence[ActType]] = None):
+        to_train: Sequence[ActType] = {
+            isinstance(action, int): [action],
+            isinstance(action, Sequence): action,
+            action is None: [act for act in self.action_space],
+        }.get(True, [])
         for action in to_train:
             loss = self.policy.train(
                 comand=action,
@@ -148,8 +154,14 @@ class Mango:
         return (self.environment, *self.abstract_layers)
 
     @property
-    def option_space(self) -> tuple[spaces.Discrete, ...]:
-        return tuple(layer.action_space for layer in self.layers)
+    def option_space(self) -> spaces.Discrete:
+        return spaces.Discrete(sum(int(layer.action_space.n) for layer in self.layers))
+
+    def relative_option_idx(self, option_idx: int) -> tuple[int, ActType]:
+        offsets = np.cumsum([layer.action_space.n for layer in self.layers])
+        layer = int(np.searchsorted(option_idx, offsets))
+        action = option_idx if layer == 0 else option_idx - offsets[layer - 1]
+        return layer, ActType(action)
 
     def set_randomness(self, randomness: float, layer: Optional[int] = None):
         if layer == 0:
@@ -159,8 +171,12 @@ class Mango:
             self.abstract_layers[layer - 1].randomness = randomness
 
     def execute_option(
-        self, layer: int, action: ActType
+        self, option_idx: int | tuple[int, ActType]
     ) -> tuple[ObsType, float, bool, bool, dict]:
+        if isinstance(option_idx, int):
+            layer, action = self.relative_option_idx(option_idx)
+        else:
+            layer, action = option_idx
         if self.verbose:
             print(f"MANGO: Executing option {action} at layer {layer}")
         obs, reward, term, trunc, info = self.layers[layer].step(action)
@@ -168,14 +184,22 @@ class Mango:
             print(f"MANGO: Option results: {obs=}, {reward=}")
         return obs, reward, term, trunc, info
 
-    def train(self, layer: Optional[int] = None, action: Optional[ActType] = None):
-        if layer == 0:
-            raise ValueError("Cannot train environment actions")
-        if layer is None and action is not None:
+    def train(
+        self,
+        layer: Optional[int | Sequence[int]] = None,
+        action: Optional[ActType | Sequence[ActType]] = None,
+    ):
+        if layer is None and action is None:
             raise Warning("Training same action in all layers")
-        layers_to_train = range(1, len(self.layers)) if layer is None else [layer]
+        layers_to_train: Sequence[int] = {
+            isinstance(layer, int): [layer],
+            isinstance(layer, Sequence): layer,
+            layer is None: range(1, len(self.layers)),
+        }.get(True, [])
         for layer in layers_to_train:
-            self.abstract_layers[layer - 1].train(action)
+            if layer == 0:
+                raise ValueError("Cannot train environment actions")
+            self.abstract_layers[layer % len(self.layers) - 1].train(action)
 
     def explore(
         self, layer: Optional[int] = None, episode_length: int = 1
@@ -188,9 +212,8 @@ class Mango:
         obs, info = self.reset()
         accumulated_reward, term, trunc = 0.0, False, False
         for _ in range(episode_length):
-            obs, reward, term, trunc, info = self.execute_option(
-                layer=layer, action=ActType(int(self.option_space[layer].sample()))
-            )
+            action = ActType(int(self.layers[layer].action_space.sample()))
+            obs, reward, term, trunc, info = self.execute_option((layer, action))
             accumulated_reward += reward
             if term or trunc:
                 break
