@@ -1,8 +1,5 @@
 from __future__ import annotations
 from dataclasses import InitVar, dataclass, field
-from itertools import chain
-import itertools
-import random
 from typing import Any, Iterator, Optional, Sequence
 import gymnasium as gym
 import numpy as np
@@ -26,10 +23,10 @@ class MangoEnv:
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         if self.verbose_indent is not None:
             print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
-        obs, reward, term, trunc, info = self.environment.step(action)
-        info["mango:trajectory"] = [self.obs, obs]
-        self.obs = obs
-        return self.obs, float(reward), term, trunc, info
+        next_obs, reward, term, trunc, info = self.environment.step(action)
+        info["mango:trajectory"] = [self.obs, next_obs]
+        self.obs = next_obs
+        return next_obs, float(reward), term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -52,7 +49,6 @@ class MangoLayer:
     randomness: float = 0.0
 
     policy: DQnetPolicyMapper = field(init=False)
-    obs: ObsType = field(init=False)
     replay_memory: ReplayMemory[Transition] = field(init=False)
     intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
     train_loss_log: tuple[list[float], ...] = field(init=False)
@@ -72,31 +68,40 @@ class MangoLayer:
     def action_space(self) -> spaces.Discrete:
         return self.abs_actions.action_space
 
+    @property
+    def obs(self) -> ObsType:
+        return self.lower_layer.obs
+
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         if self.verbose_indent is not None:
             print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
 
-        trajectory, reward, term, trunc, info = [self.obs], 0.0, False, False, {}
-        for transition in self.iterate_policy(comand=action):
-            self.replay_memory.push(transition)
-            trajectory += transition.info["mango:trajectory"][1:]
-            reward += transition.reward
-            term = transition.terminated or term
-            trunc = transition.truncated or trunc
-            info.update(transition.info)
-        info["mango:trajectory"] = trajectory
+        start_obs, trajectory, accumulated_reward = self.obs, [self.obs], 0.0
+        while True:
+            start_obs = self.obs
+            low_action = self.policy.get_action(action, start_obs, self.randomness)
+            next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
+            mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
+            info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
+            self.replay_memory.push(
+                Transition(start_obs, low_action, next_obs, reward, term, trunc, info)
+            )
+            trajectory += info["mango:trajectory"][1:]
+            accumulated_reward += reward
+            if term or trunc or mango_term or mango_trunc:
+                break
 
+        info = {**info, "mango:trajectory": trajectory}
         if info["mango:terminated"]:
             self.intrinsic_reward_log[action].append(
                 self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
             )
-        return self.obs, reward, term, trunc, info
+        return self.obs, accumulated_reward, term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
-        self.obs, info = self.lower_layer.reset(seed=seed, options=options)
-        return self.obs, info
+        return self.lower_layer.reset(seed=seed, options=options)
 
     def train(self, action: Optional[ActType | Sequence[ActType]] = None):
         to_train: Sequence[ActType] = {
@@ -112,19 +117,6 @@ class MangoLayer:
             )
             if loss is not None:
                 self.train_loss_log[action].append(loss)
-
-    def iterate_policy(self, comand: ActType) -> Iterator[Transition]:
-        start_obs = self.obs
-        while True:
-            action = self.policy.get_action(comand, start_obs, self.randomness)
-            next_obs, reward, term, trunc, info = self.lower_layer.step(action)
-            mango_term, mango_trunc = self.abs_actions.beta(comand, start_obs, next_obs)
-            info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
-            yield Transition(start_obs, action, next_obs, reward, term, trunc, info)
-            if term or trunc or mango_term or mango_trunc:
-                break
-            start_obs = next_obs
-        self.obs = next_obs
 
     def __repr__(self) -> str:
         return torch_style_repr(
@@ -150,6 +142,10 @@ class Mango:
         self.reset()
 
     @property
+    def obs(self) -> ObsType:
+        return self.environment.obs
+
+    @property
     def layers(self) -> tuple[MangoEnv | MangoLayer, ...]:
         return (self.environment, *self.abstract_layers)
 
@@ -173,10 +169,9 @@ class Mango:
     def execute_option(
         self, option_idx: int | tuple[int, ActType]
     ) -> tuple[ObsType, float, bool, bool, dict]:
-        if isinstance(option_idx, int):
-            layer, action = self.relative_option_idx(option_idx)
-        else:
-            layer, action = option_idx
+        layer, action = (
+            self.relative_option_idx(option_idx) if isinstance(option_idx, int) else option_idx
+        )
         if self.verbose:
             print(f"MANGO: Executing option {action} at layer {layer}")
         obs, reward, term, trunc, info = self.layers[layer].step(action)
