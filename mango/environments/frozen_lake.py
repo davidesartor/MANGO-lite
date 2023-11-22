@@ -10,41 +10,50 @@ import torch
 from .. import spaces
 from ..utils import ActType, ObsType
 from ..actions.abstract_actions import Grid2dActions
+import numba
 
 
-def connected_component(
-    board: npt.NDArray[np.character], contains: tuple[int, int]
-) -> npt.NDArray[np.bool_]:
-    contains = contains[0] % board.shape[0], contains[1] % board.shape[1]
-    frontier, reachable = [contains], np.zeros_like(board, dtype=bool)
-    while frontier:
-        r, c = frontier.pop()
-        if reachable[r, c] or board[r, c] == "H":
-            continue
-        reachable[r, c] = True
-        for x, y in [(r + 1, c), (r, c + 1), (r - 1, c), (r, c - 1)]:
-            if 0 <= x < board.shape[0] and 0 <= y < board.shape[1]:
-                frontier.append((x, y))
-    return reachable
-
-
-def sample_position_in(admissible: npt.NDArray[np.bool_], np_random) -> tuple[int, int]:
-    r, c = np_random.integers(0, admissible.shape[0], size=2)  # type: ignore
-    while admissible[r, c] == False:
-        r, c = np_random.integers(0, admissible.shape[0], size=2)  # type: ignore
+@numba.njit
+def sample_position_in(region: npt.NDArray[np.bool_]) -> tuple[int, int]:
+    r, c = np.random.randint(region.shape[0]), np.random.randint(region.shape[1])
+    if region.sum() == 0:
+        return r, c
+    while not region[r, c]:
+        r, c = np.random.randint(region.shape[0]), np.random.randint(region.shape[1])
     return r, c
 
 
+@numba.njit
+def reachable_from(
+    start: npt.NDArray[np.bool_], frozen: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.bool_]:
+    reached = start.copy() & frozen
+    total = 0
+    while total < reached.sum():
+        total = reached.sum()
+        adj = np.zeros(reached.shape, dtype=np.bool_)
+        adj[1:, :] |= reached[:-1, :]
+        adj[:-1, :] |= reached[1:, :]
+        adj[:, 1:] |= reached[:, :-1]
+        adj[:, :-1] |= reached[:, 1:]
+        reached |= adj & frozen
+    return reached
+
+
+@numba.njit
 def random_board(
-    shape: tuple[int, int], p: float, np_random, contains: Optional[tuple[int, int]] = None
-) -> tuple[npt.NDArray[np.character], npt.NDArray[np.bool_]]:
-    if contains is None:
-        contains = sample_position_in(np.ones(shape, dtype=bool), np_random)
-    while True:
-        board = np_random.choice(["F", "H"], shape, p=[p, 1 - p])
-        connected = connected_component(board, contains=contains)
-        if connected.sum() >= (~connected).sum():
-            return board, connected
+    shape: tuple[int, int], p: float, contains: Optional[tuple[int, int]] = None
+) -> npt.NDArray[np.bool_]:
+    connected = np.zeros(shape, dtype=np.bool_)
+    start = sample_position_in(connected) if contains is None else contains
+    connected[start] = True
+    frozen = np.random.random_sample(shape) < p
+    connected |= reachable_from(connected, frozen)
+    while connected.sum() < p * connected.size:
+        extension = sample_position_in(~(connected + frozen))
+        frozen[extension] = True
+        connected |= reachable_from(connected, frozen + connected)
+    return connected
 
 
 def generate_map(
@@ -54,24 +63,30 @@ def generate_map(
     goal_pos: tuple[int, int] | None = (-1, -1),
     multi_start=False,
     mirror=False,
-    seed: Optional[int] = None,
 ):
     if p < 0 or p > 1:
         raise ValueError("p must be in [0, 1]")
-    np_random, _ = seeding.np_random(seed)
-    if start_pos is not None and goal_pos is not None:
-        board, connected = random_board(shape, p, np_random, contains=goal_pos)
+    if start_pos and goal_pos:
+        start_pos = start_pos[0] % shape[0], start_pos[1] % shape[1]
+        goal_pos = goal_pos[0] % shape[0], goal_pos[1] % shape[1]
+        connected = random_board(shape, p, contains=goal_pos)
         while not connected[start_pos]:
-            board, connected = random_board(shape, p, np_random, contains=goal_pos)
+            connected = random_board(shape, p, contains=goal_pos)
     else:
-        board, connected = random_board(shape, p, np_random, contains=goal_pos or start_pos)
-        start_pos = start_pos or sample_position_in(connected, np_random)
-        goal_pos = goal_pos or sample_position_in(connected, np_random)
-    board[start_pos] = "S"
+        connected = random_board(shape, p, contains=(goal_pos or start_pos))
+        start_pos = start_pos or sample_position_in(connected)
+        while not goal_pos or goal_pos == start_pos:
+            goal_pos = sample_position_in(connected)
+
+    desc = np.empty(shape, dtype="U1")
+    desc[connected] = b"F"
+    desc[~connected] = b"H"
     if multi_start:
-        board[connected] = "S"
-    board[goal_pos] = "G"
-    desc = ["".join(x) for x in board]
+        desc[connected] = "S"
+    else:
+        desc[start_pos] = "S"
+    desc[goal_pos] = "G"
+    desc = ["".join(row) for row in desc]
     if mirror:
         desc = [row[::-1] + row[shape[0] % 2 :] for row in desc[::-1] + desc[shape[1] % 2 :]]
     return desc
@@ -202,14 +217,14 @@ def plot_trajectory(trajectory: list[ObsType] | list[int], env):
         )
 
 
-def all_observations(env) -> tuple[list[ObsType], list[bool]]:
+def all_observations(env, mask=lambda x: x) -> tuple[list[ObsType], list[bool]]:
     s = env.unwrapped.s  # type: ignore
     obs_list = []
     valid_mask = []
     y_matrix, x_matrix = np.indices((env.unwrapped.nrow, env.unwrapped.ncol))  # type: ignore
     for y, x in zip(y_matrix.flatten(), x_matrix.flatten()):
         env.unwrapped.s = int(y * env.unwrapped.ncol + x)  # type: ignore
-        obs_list.append(env.observation(env.unwrapped.s))
+        obs_list.append(mask(env.observation(env.unwrapped.s)))
         valid_mask.append(not (env.unwrapped.desc[y, x] == b"H" or env.unwrapped.desc[y, x] == b"G"))  # type: ignore
     env.unwrapped.s = s  # type: ignore
     return obs_list, valid_mask
@@ -223,18 +238,17 @@ def get_qval(policy, obs_list: list[ObsType]) -> tuple[np.ndarray, np.ndarray]:
     return best_qvals.cpu().detach().numpy(), actions.cpu().detach().numpy()
 
 
-def plot_qval_heatmap(policy, env, mask=lambda x: x, cmap="RdYlGn", **kwargs):
-    grid_shape = env.unwrapped.desc.shape
-    obs_list, valid_mask = all_observations(env)
-    best_qvals, actions = get_qval(policy, [mask(obs) for obs in obs_list])
+def plot_qval_heatmap(policy, all_obs_list, env, cmap="RdYlGn", **kwargs):
+    obs_list, valid_mask = all_obs_list
+    best_qvals, actions = get_qval(policy, obs_list)
     best_qvals[~np.array(valid_mask, dtype=bool)] = np.nan
-    best_qvals = np.array(best_qvals).reshape(grid_shape)
+    best_qvals = np.array(best_qvals).reshape(env.unwrapped.desc.shape)
 
     cmap = mpl.colormaps.get_cmap(cmap)  # type: ignore
     cmap.set_bad(color="aqua")
     plt.imshow(best_qvals, cmap=cmap, **kwargs)
     plt.colorbar()
-    Y, X = np.indices(grid_shape)
+    Y, X = np.indices(env.unwrapped.desc.shape)
     for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask):
         if is_valid:
             dy, dx = Grid2dActions.to_delta(act)
@@ -261,6 +275,8 @@ def plot_all_qvals(mango, env, trajectory=None, **kwargs):
         if trajectory is not None:
             plot_trajectory(trajectory, env)
         plot_grid(env, layer.abs_actions.cell_shape)  # type: ignore
+        plt.xticks([])
+        plt.yticks([])
         for col, action in enumerate(Grid2dActions, start=2):
             plt.subplot(
                 len(mango.abstract_layers),
@@ -269,4 +285,6 @@ def plot_all_qvals(mango, env, trajectory=None, **kwargs):
             )
             plt.title(f"Qvals AbsAction {action.name}")
             policy = layer.policy.policies[ActType(action)]
-            plot_qval_heatmap(policy, env, layer.abs_actions.mask, cmap="RdYlGn", vmin=-1, vmax=1)  # type: ignore
+            plot_qval_heatmap(policy, all_observations(env, layer.abs_actions.mask), env, vmin=-1, vmax=1)  # type: ignore
+            plt.xticks([])
+            plt.yticks([])
