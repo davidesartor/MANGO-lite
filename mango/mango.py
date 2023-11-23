@@ -232,8 +232,9 @@ class Mango:
 
     def save_to(self, path: str, include_env: bool = True):
         self.reset()
+        env = self.environment
         if not include_env:
-            env, self.environment = self.environment, None
+            self.environment: MangoEnv = None  # type: ignore
             raise Warning("Environment not saved, this may cause problems when loading")
         with open(path, "wb") as f:
             pickle.dump(self, f)
