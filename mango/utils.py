@@ -77,7 +77,7 @@ def smooth(signal, window=10):
 
 
 def plot_loss_reward(mango, actions):
-    plt.figure(figsize=(12, 4))
+    plt.figure(figsize=(12, 6))
     for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
         for action in actions:
             plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 1)
