@@ -77,15 +77,19 @@ def smooth(signal, window=10):
 
 
 def plot_loss_reward(mango, actions):
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(12, 4))
     for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
         for action in actions:
-            plt.subplot(2, len(mango.abstract_layers), 2 * (layer_idx - 1) + 1)
+            plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 1)
             plt.title(f"loss Layer {layer_idx}")
             plt.semilogy(smooth(layer.train_loss_log[action]), label=f"{action.name}")
             plt.legend()
 
-            plt.subplot(2, len(mango.abstract_layers), 2 * (layer_idx - 1) + 2)
+            plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 2)
             plt.title(f"reward Layer {layer_idx}")
             plt.plot(smooth(layer.intrinsic_reward_log[action]), label=f"{action.name}")
             plt.legend()
+
+        plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 3)
+        plt.title(f"episode lenght Layer {layer_idx}")
+        plt.plot(smooth(layer.episode_length_log))
