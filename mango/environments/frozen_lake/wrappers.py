@@ -1,13 +1,10 @@
 from typing import Any
 import gymnasium as gym
 import numpy as np
-
-from gymnasium.utils import seeding
-from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv, generate_random_map
+from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv
 
 from ... import spaces
 from ...utils import ActType, ObsType
-from ...actions.abstract_actions import Grid2dActions
 from .utils import generate_map
 
 

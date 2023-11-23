@@ -81,6 +81,3 @@ def generate_map(
     if mirror:
         desc = [row[::-1] + row[shape[0] % 2 :] for row in desc[::-1] + desc[shape[1] % 2 :]]
     return desc
-
-
-

@@ -1,5 +1,3 @@
-import numpy as np
-from gymnasium.spaces.space import MaskNDArray
 from .utils import ObsType, ActType
 import gymnasium as gym
 

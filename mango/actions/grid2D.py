@@ -8,23 +8,23 @@ from .. import spaces
 from .abstract_actions import AbstractActions
 
 
-class Grid2dActions(IntEnum):
-    LEFT = 0
-    DOWN = 1
-    RIGHT = 2
-    UP = 3
+class Actions(IntEnum):
+    LEFT = ActType(0)
+    DOWN = ActType(1)
+    RIGHT = ActType(2)
+    UP = ActType(3)
 
     def to_delta(self) -> tuple[int, int]:
         return {
-            Grid2dActions.LEFT: (0, -1),
-            Grid2dActions.DOWN: (1, 0),
-            Grid2dActions.RIGHT: (0, 1),
-            Grid2dActions.UP: (-1, 0),
+            Actions.LEFT: (0, -1),
+            Actions.DOWN: (1, 0),
+            Actions.RIGHT: (0, 1),
+            Actions.UP: (-1, 0),
         }[self]
 
 
 @dataclass(eq=False, slots=True, repr=True)
-class Grid2dMovement(AbstractActions):
+class SubGridMovement(AbstractActions):
     action_space: ClassVar[spaces.Discrete] = spaces.Discrete(4)
     cell_shape: tuple[int, int]
     grid_shape: tuple[int, int]
@@ -48,7 +48,7 @@ class Grid2dMovement(AbstractActions):
     def compatibility(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> float:
         start_y, start_x = self.obs2coord(start_obs)
         next_y, next_x = self.obs2coord(next_obs)
-        delta_y, delta_x = Grid2dActions.to_delta(Grid2dActions(action))
+        delta_y, delta_x = Actions.to_delta(Actions(action))
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
 
         if next_y == next_y_expected and next_x == next_x_expected:
@@ -60,7 +60,7 @@ class Grid2dMovement(AbstractActions):
 
 
 @dataclass(eq=False, slots=True, repr=True)
-class Grid2dMovementOnehot(Grid2dMovement):
+class SubGridMovementOnehot(SubGridMovement):
     agent_channel: int = 0
     add_valid_channel: bool = False
 
