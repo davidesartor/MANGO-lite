@@ -95,7 +95,7 @@ class MangoLayer:
                 break
 
         info = {**info, "mango:trajectory": trajectory}
-        if info["mango:terminated"]:
+        if info["mango:terminated"] or term:
             self.intrinsic_reward_log[action].append(
                 self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
             )
@@ -218,7 +218,7 @@ class Mango:
             accumulated_reward += reward
             if term or trunc:
                 break
-        self.abstract_layers[layer % len(self.layers) - 1].episode_length_log.append(i)
+        self.abstract_layers[layer % len(self.layers) - 1].episode_length_log.append(i + 1)
         return obs, accumulated_reward, term, trunc, info
 
     def reset(
