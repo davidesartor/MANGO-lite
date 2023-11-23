@@ -11,9 +11,7 @@ class DynamicPolicy(Protocol):
     comand_space: spaces.Discrete
     action_space: spaces.Discrete
 
-    def get_action(
-        self, comand: ActType, obs: ObsType, randomness: float = 0.0
-    ) -> ActType:
+    def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
     def train(
@@ -35,8 +33,7 @@ class DQnetPolicyMapper(DynamicPolicy):
 
     def __post_init__(self, policy_params):
         self.policies = {
-            comand: DQnetPolicy(self.action_space, **policy_params)
-            for comand in self.comand_space
+            comand: DQnetPolicy(self.action_space, **policy_params) for comand in self.comand_space
         }
 
     def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0):
@@ -54,6 +51,7 @@ class DQnetPolicyMapper(DynamicPolicy):
                 start_obs=self.obs_transform(trans.start_obs),
                 next_obs=self.obs_transform(trans.next_obs),
                 reward=reward_generator(comand, trans.start_obs, trans.next_obs),
+                truncated=trans.info["mango:truncated"] or trans.info["mango:terminated"],
             )
             for trans in transitions
         ]
