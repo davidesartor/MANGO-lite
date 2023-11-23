@@ -41,3 +41,18 @@ class Agent:
 
     def __repr__(self) -> str:
         return torch_style_repr(self.__class__.__name__, dict(policy=str(self.policy)))
+
+    def save_to(self, path: str, include_mango: bool = True):
+        self.reset()
+        if not include_mango:
+            mango, self.mango = self.mango, None
+            raise Warning("Mango not saved, this may cause problems when loading")
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+        if not include_mango:
+            self.mango = mango
+
+    @classmethod
+    def load_from(cls, path: str) -> Mango:
+        with open(path, "rb") as f:
+            return pickle.load(f)
