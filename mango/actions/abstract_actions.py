@@ -21,11 +21,11 @@ class AbstractActions(Protocol):
 
 
 class Grid2dActions(IntEnum):
-    LEFT = 0
-    DOWN = 1
-    RIGHT = 2
-    UP = 3
-
+    LEFT = ActType(0)
+    DOWN = ActType(1)
+    RIGHT = ActType(2)
+    UP = ActType(3)
+    
     def to_delta(self) -> tuple[int, int]:
         return {
             Grid2dActions.LEFT: (0, -1),
