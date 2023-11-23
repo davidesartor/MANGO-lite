@@ -1,69 +1,43 @@
-from dataclasses import dataclass, field
-import re
-from turtle import st
-from typing import Generic, Optional, SupportsFloat, TypeVar
-import gymnasium as gym
-import numpy as np
-import numpy.typing as npt
-
-from .concepts import Concept
-from .utils import ReplayMemory, Transition
-from .policies import Policy, DQnetPolicy
-from .mango import Mango
-
-ObsType = TypeVar("ObsType")
+from typing import Any, Optional, Sequence
+from .. import spaces
+from ..mango import Mango
+from ..policies.policies import Policy, DQnetPolicy
+from ..utils import ReplayMemory, Transition, ObsType, ActType, torch_style_repr
 
 
-@dataclass(eq=False, slots=True)
-class Agent(Generic[ObsType]):
-    mango: Mango[ObsType] = field(repr=False)
-    base_concept: Concept[ObsType] = field(repr=False)
-    policy: Policy = field(init=False)
-    replay_memory: ReplayMemory[Transition] = field(default_factory=ReplayMemory)
+class Agent:
+    def __init__(self, mango: Mango, policy_params: dict[str, Any] = dict()):
+        self.mango = mango
+        self.policy = DQnetPolicy(action_space=mango.option_space, **policy_params)
+        self.replay_memory = ReplayMemory()
+        self.train_loss_log = []
+        self.reward_log = []
 
-    def __post_init__(self):
-        n_options = sum(int(action_space.n) for action_space in self.mango.option_space)
-        self.policy = DQnetPolicy(action_space=gym.spaces.Discrete(n_options))
+    def step(self, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
+        start_obs = self.mango.obs
+        option = self.policy.get_action(start_obs, randomness)
+        next_obs, reward, term, trunc, info = self.mango.step(option)
+        self.replay_memory.push(Transition(start_obs, option, next_obs, reward, term, trunc, info))
+        self.reward_log.append(reward)
+        return self.mango.obs, reward, term, trunc, info
 
-    def relative_option_idx(self, global_option_idx: int) -> tuple[int, int]:
-        action = global_option_idx
-        layer_idx = 0
-        for action_space in self.mango.option_space:
-            if action < action_space.n:
-                break
-            action -= int(action_space.n)
-            layer_idx += 1
-        return layer_idx, action
-
-    def step(
-        self, env_state: ObsType, randomness: float = 0.0
-    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict]:
-        start_state = self.base_concept.abstract(env_state)
-        action = self.policy.get_action(start_state)
-        layer_idx, relative_action = self.relative_option_idx(action)
-        env_state, reward, term, trunc, info = self.mango.execute_option(
-            layer_idx=layer_idx, action=relative_action, randomness=randomness
-        )
-        next_state = self.base_concept.abstract(env_state)
-        self.replay_memory.push(
-            Transition(start_state, action, next_state, reward, term, trunc, info)
-        )
-        return env_state, reward, term, trunc, info
-
-    def train(self) -> None:
-        if self.replay_memory.size > 1:
-            self.policy.train(self.replay_memory.sample())
+    def train(self) -> float | None:
+        loss = self.policy.train(transitions=self.replay_memory.sample())
+        if loss is not None:
+            self.train_loss_log.append(loss)
+        return loss
 
     def explore(
-        self, randomness: float, max_steps: int = 1
+        self, episode_length: int, randomness: float = 0.0
     ) -> tuple[ObsType, float, bool, bool, dict]:
-        env_state, info = self.mango.reset()
+        obs, info = self.mango.reset()
         accumulated_reward, term, trunc = 0.0, False, False
-        for _ in range(max_steps):
-            env_state, reward, term, trunc, info = self.step(
-                env_state, randomness=randomness
-            )
-            accumulated_reward += float(reward)
+        for _ in range(episode_length):
+            obs, reward, term, trunc, info = self.step(randomness=randomness)
+            accumulated_reward += reward
             if term or trunc:
                 break
-        return env_state, accumulated_reward, term, trunc, info
+        return obs, accumulated_reward, term, trunc, info
+
+    def __repr__(self) -> str:
+        return torch_style_repr(self.__class__.__name__, dict(policy=str(self.policy)))

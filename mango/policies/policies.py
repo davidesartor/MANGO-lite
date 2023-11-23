@@ -38,20 +38,15 @@ class DQnetPolicy(Policy):
     lr: InitVar[float] = 1e-3
     gamma: float = field(default=0.9, repr=False)
     refresh_timer: tuple[int, int] = field(default=(0, 10), repr=False)
-    
 
     net: ConvEncoder = field(init=False, repr=False)
     target_net: ConvEncoder = field(init=False, repr=False)
-    ema_model: torch.optim.swa_utils.AveragedModel = field(init=False, repr=False)
     optimizer: torch.optim.Optimizer = field(init=False, repr=False)
     device: torch.device = field(init=False, repr=False, default=torch.device("cpu"))
 
     def __post_init__(self, net_params, lr):
         self.net = ConvEncoder(None, int(self.action_space.n), **net_params)
         self.target_net = ConvEncoder(None, int(self.action_space.n), **net_params)
-        self.ema_model = torch.optim.swa_utils.AveragedModel(
-            self.net, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn() # type: ignore
-        )
         self.optimizer = torch.optim.RAdam(self.net.parameters(recurse=True), lr=lr)
         self.device = next(self.net.parameters()).device
 
@@ -64,12 +59,11 @@ class DQnetPolicy(Policy):
             return ActType(int(action_log_prob.argmax().item()))
 
     def qvalues(self, obs: ObsType) -> torch.Tensor:
-        self.ema_model.eval()
+        self.net.eval()
         with torch.no_grad():
             tensor_obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
-            qvals = self.ema_model(tensor_obs.unsqueeze(0)).squeeze(0)
+            qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
         return qvals
-
 
     def train(self, transitions: Sequence[Transition]) -> float | None:
         if not transitions:
@@ -81,7 +75,6 @@ class DQnetPolicy(Policy):
         loss.backward()
         self.optimizer.step()
         self.update_target_net()
-        self.ema_model.update_parameters(self.net)
         return float(loss.item())
 
     def update_target_net(self):
@@ -97,23 +90,29 @@ class DQnetPolicy(Policy):
         terminated_option = [i["mango:terminated"] for i in info]
         truncated_option = [i["mango:truncated"] for i in info]
 
-        start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.float32, device=self.device)
-        actions = torch.as_tensor(np.array(actions), dtype=torch.int64, device=self.device).unsqueeze(1)
-        next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.float32, device=self.device)
-        rewards = torch.as_tensor(np.array(rewards), dtype=torch.float32, device=self.device)
-        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=self.device)
-        terminated_option = torch.as_tensor(np.array(terminated_option), dtype=torch.bool, device=self.device)
-        truncated_option = torch.as_tensor(np.array(truncated_option), dtype=torch.bool, device=self.device)
+        start_obs = torch.as_tensor(
+            np.stack(start_obs), dtype=torch.get_default_dtype(), device=self.device
+        )
+        actions = torch.as_tensor(np.array(actions), dtype=torch.int64, device=self.device)
+        next_obs = torch.as_tensor(
+            np.stack(next_obs), dtype=torch.get_default_dtype(), device=self.device
+        )
+        rewards = torch.as_tensor(np.array(rewards), device=self.device)
+        terminated = torch.as_tensor(np.array(terminated), device=self.device)
+        terminated_option = torch.as_tensor(np.array(terminated_option), device=self.device)
+        truncated_option = torch.as_tensor(np.array(truncated_option), device=self.device)
 
         # double DQN - use qnet to select best action, use target_net to evaluate it
         qval_start = self.net(start_obs)
-        qval_next = self.net(next_obs)
-        qval_sampled_action = torch.gather(qval_start, 1, actions).squeeze(1)
+        qval_sampled_action = torch.gather(qval_start, 1, actions.unsqueeze(1)).squeeze(1)
         with torch.no_grad():
+            qval_next = self.net(next_obs)
             best_next_action = qval_next.argmax(axis=1).unsqueeze(1)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
-            best_qval_next[terminated_option] = 1.0  # reward + gamma * reward + gamma^2 * reward + ...
+            best_qval_next[terminated_option] = 1.0
             best_qval_next[truncated_option] = 1.0
             best_qval_next[terminated] = 0.0
-        loss = torch.nn.functional.smooth_l1_loss(qval_sampled_action, rewards + self.gamma * best_qval_next)
+        loss = torch.nn.functional.smooth_l1_loss(
+            qval_sampled_action, rewards + self.gamma * best_qval_next
+        )
         return loss
