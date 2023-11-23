@@ -149,6 +149,7 @@ class ConvEncoder(torch.nn.Sequential):
             )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        print("input", input.shape)
         if not self._initialized:
             if self[0].forward(input).ndim <= 2:
                 self.pop(0)

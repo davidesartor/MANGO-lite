@@ -161,8 +161,11 @@ class Mango:
         if isinstance(option, tuple):
             return option
         offsets = np.cumsum([layer.action_space.n for layer in self.layers])
-        layer = int(np.searchsorted(option, offsets))
-        action = option if layer == 0 else ActType(option - offsets[layer - 1])
+        layer = int(np.searchsorted(offsets, option + 1))
+        if layer == 0:
+            action = option
+        else:
+            action = ActType(option - offsets[layer - 1])
         return layer, action
 
     def set_randomness(self, randomness: float, layer: Optional[int] = None):
