@@ -53,6 +53,7 @@ class MangoLayer:
     replay_memory: ReplayMemory[Transition] = field(init=False)
     intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
     train_loss_log: tuple[list[float], ...] = field(init=False)
+    episode_length_log: list[int] = field(init=False)
 
     def __post_init__(self, policy_params):
         self.policy = DQnetPolicyMapper(
@@ -63,6 +64,7 @@ class MangoLayer:
         )
         self.intrinsic_reward_log = tuple([] for _ in self.action_space)
         self.train_loss_log = tuple([] for _ in self.action_space)
+        self.episode_length_log = []
         self.replay_memory = ReplayMemory()
 
     @property
@@ -204,18 +206,19 @@ class Mango:
         self, layer: Optional[int] = None, episode_length: int = 1
     ) -> tuple[ObsType, float, bool, bool, dict]:
         if layer == 0:
-            raise Warning("Exploring base layer works, but is likely a logical error")
+            raise ValueError("Environment actions do not need to be explored")
         if layer is None:
             layer = len(self.layers) - 1
 
         obs, info = self.reset()
-        accumulated_reward, term, trunc = 0.0, False, False
-        for _ in range(episode_length):
+        accumulated_reward, term, trunc, i = 0.0, False, False, 0
+        for i in range(episode_length):
             action = ActType(int(self.layers[layer].action_space.sample()))
             obs, reward, term, trunc, info = self.step((layer, action))
             accumulated_reward += reward
             if term or trunc:
                 break
+        self.abstract_layers[layer % len(self.layers) - 1].episode_length_log.append(i)
         return obs, accumulated_reward, term, trunc, info
 
     def reset(
@@ -227,8 +230,11 @@ class Mango:
         params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
         return torch_style_repr(self.__class__.__name__, params)
 
-    def save_to(self, path: str):
+    def save_to(self, path: str, include_env: bool = True):
         self.reset()
+        if not include_env:
+            self.environment: MangoEnv = None  # type: ignore
+            raise Warning("Environment not saved, this may cause problems when loading")
         with open(path, "wb") as f:
             pickle.dump(self, f)
 
