@@ -204,17 +204,18 @@ def plot_grid(env, cell_shape: tuple[int, int], alpha=0.2):
 
 
 def plot_trajectory(trajectory: list[ObsType] | list[int], env):
-    if not isinstance(trajectory[0], int):
-        trajectory = [env.observation_inv(obs) for obs in trajectory]
-    square = env.unwrapped.cell_size
-    for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
-        y1, x1 = np.unravel_index(start_obs, env.unwrapped.desc.shape)
-        y2, x2 = np.unravel_index(next_obs, env.unwrapped.desc.shape)
-        plt.plot(
-            [x1 * square[1] + square[1] // 2, x2 * square[1] + square[1] // 2],
-            [y1 * square[0] + square[0] // 2, y2 * square[0] + square[0] // 2],
-            "k--",
-        )
+    if trajectory:
+        if not isinstance(trajectory[0], int):
+            trajectory = [env.observation_inv(obs) for obs in trajectory]
+        square = env.unwrapped.cell_size
+        for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
+            y1, x1 = np.unravel_index(start_obs, env.unwrapped.desc.shape)
+            y2, x2 = np.unravel_index(next_obs, env.unwrapped.desc.shape)
+            plt.plot(
+                [x1 * square[1] + square[1] // 2, x2 * square[1] + square[1] // 2],
+                [y1 * square[0] + square[0] // 2, y2 * square[0] + square[0] // 2],
+                "k--",
+            )
 
 
 def all_observations(env, mask=lambda x: x) -> tuple[list[ObsType], list[bool]]:
@@ -238,7 +239,7 @@ def get_qval(policy, obs_list: list[ObsType]) -> tuple[np.ndarray, np.ndarray]:
     return best_qvals.cpu().detach().numpy(), actions.cpu().detach().numpy()
 
 
-def plot_qval_heatmap(policy, all_obs_list, env, cmap="RdYlGn", **kwargs):
+def plot_qval_heatmap(policy, all_obs_list, env, cmap="RdYlGn", vmin=-1, vmax=1, **kwargs):
     obs_list, valid_mask = all_obs_list
     best_qvals, actions = get_qval(policy, obs_list)
     best_qvals[~np.array(valid_mask, dtype=bool)] = np.nan
@@ -246,7 +247,7 @@ def plot_qval_heatmap(policy, all_obs_list, env, cmap="RdYlGn", **kwargs):
 
     cmap = mpl.colormaps.get_cmap(cmap)  # type: ignore
     cmap.set_bad(color="aqua")
-    plt.imshow(best_qvals, cmap=cmap, **kwargs)
+    plt.imshow(best_qvals, cmap=cmap, vmin=-1, vmax=1, **kwargs)
     plt.colorbar()
     Y, X = np.indices(env.unwrapped.desc.shape)
     for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask):
@@ -262,29 +263,42 @@ def plot_qval_heatmap(policy, all_obs_list, env, cmap="RdYlGn", **kwargs):
     return best_qvals
 
 
-def plot_all_qvals(mango, env, trajectory=None, **kwargs):
+def plot_all_abstractions(mango, trajectory=[]):
+    env = mango.environment.environment
+    plt.figure(figsize=(3 * len(mango.abstract_layers) + 3, 3))
+    plt.subplot(1, len(mango.abstract_layers) + 1, 1)
+    plt.title(f"Environment")
+    plt.imshow(env.render())  # type: ignore
+    plot_trajectory(trajectory, env)
+    plt.xticks([])
+    plt.yticks([])
+    for col, layer in enumerate(mango.abstract_layers, start=1):
+        plt.subplot(1, len(mango.abstract_layers) + 1, col + 1)
+        plt.title(f"Layer {col+1} Abstraction")
+        plt.imshow(env.render())  # type: ignore
+        plot_trajectory(trajectory, env)
+        plot_grid(env, layer.abs_actions.cell_shape)
+        plt.xticks([])
+        plt.yticks([])
+
+
+def plot_all_qvals(mango, trajectory=[], **kwargs):
+    env = mango.environment.environment
     plt.figure(figsize=(4 * len(Grid2dActions) + 3, 3 * len(mango.abstract_layers)))
+    n_rows, n_cols = len(mango.abstract_layers), len(Grid2dActions) + 1
     for row, layer in enumerate(mango.abstract_layers):
-        plt.subplot(
-            len(mango.abstract_layers),
-            len(Grid2dActions) + 1,
-            row * (len(Grid2dActions) + 1) + 1,
-        )
+        plt.subplot(n_rows, n_cols, row * (len(Grid2dActions) + 1) + 1)
         plt.title(f"Layer {row+1} Abstraction")
         plt.imshow(env.render())  # type: ignore
-        if trajectory is not None:
-            plot_trajectory(trajectory, env)
-        plot_grid(env, layer.abs_actions.cell_shape)  # type: ignore
+        plot_trajectory(trajectory, env)
+        plot_grid(env, layer.abs_actions.cell_shape)
         plt.xticks([])
         plt.yticks([])
         for col, action in enumerate(Grid2dActions, start=2):
-            plt.subplot(
-                len(mango.abstract_layers),
-                len(Grid2dActions) + 1,
-                row * (len(Grid2dActions) + 1) + col,
-            )
+            plt.subplot(n_rows, n_cols, row * (len(Grid2dActions) + 1) + col)
             plt.title(f"Qvals AbsAction {action.name}")
             policy = layer.policy.policies[ActType(action)]
-            plot_qval_heatmap(policy, all_observations(env, layer.abs_actions.mask), env, vmin=-1, vmax=1)  # type: ignore
+            all_obs_list = all_observations(env, layer.abs_actions.mask)
+            plot_qval_heatmap(policy, all_obs_list, env, **kwargs)
             plt.xticks([])
             plt.yticks([])
