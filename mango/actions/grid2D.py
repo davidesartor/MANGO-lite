@@ -3,7 +3,6 @@ from enum import IntEnum
 import random
 from typing import ClassVar
 import numpy as np
-import torch
 from ..utils import ObsType, ActType
 from .. import spaces
 from .abstract_actions import AbstractActions

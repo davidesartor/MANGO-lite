@@ -115,12 +115,13 @@ class MangoLayer:
         elif action is None:
             to_train = [act for act in self.action_space]
         for action in to_train:
-            loss = self.policy.train(
-                comand=action,
-                transitions=self.replay_memory.sample(action),
-            )
-            if loss is not None:
-                self.train_loss_log[action].append(loss)
+            if self.replay_memory.can_sample(action):
+                loss = self.policy.train(
+                    comand=action,
+                    transitions=self.replay_memory.sample(action),
+                )
+                if loss is not None:
+                    self.train_loss_log[action].append(loss)
 
     def __repr__(self) -> str:
         return torch_style_repr(

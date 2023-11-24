@@ -36,7 +36,7 @@ class TensorTransitionLists(NamedTuple):
     reward: torch.Tensor
     terminated: torch.Tensor
     truncated: torch.Tensor
-    info: dict[str, torch.Tensor]
+    info: list[dict[str, Any]]
 
 
 @dataclass(eq=False)

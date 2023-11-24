@@ -96,8 +96,12 @@ class DQnetPolicy(Policy):
         rewards = rewards.to(dtype=torch.get_default_dtype(), device=self.device)
         terminated = terminated.to(dtype=torch.bool, device=self.device)
         truncated = truncated.to(dtype=torch.bool, device=self.device)
-        terminated_option = info["mango:terminated"].to(dtype=torch.bool, device=self.device)
-        truncated_option = info["mango:truncated"].to(dtype=torch.bool, device=self.device)
+        terminated_option = torch.as_tensor(
+            np.array([i["mango:terminated"] for i in info]), dtype=torch.bool, device=self.device
+        )
+        truncated_option = torch.as_tensor(
+            np.array([i["mango:truncated"] for i in info]), dtype=torch.bool, device=self.device
+        )
 
         # double DQN - use qnet to select best action, use target_net to evaluate it
         qval_start = self.net(start_obs)
