@@ -8,6 +8,7 @@ import numpy as np
 from . import spaces
 from .actions.abstract_actions import AbstractActions
 from .policies.dynamicpolicies import DQnetPolicyMapper, DynamicPolicy
+from .policies.experiencereplay import ExperienceReplay
 from .utils import ReplayMemory, Transition, ObsType, ActType, OptionType, torch_style_repr
 
 
@@ -50,7 +51,7 @@ class MangoLayer:
     randomness: float = 0.0
 
     policy: DQnetPolicyMapper = field(init=False)
-    replay_memory: ReplayMemory[Transition] = field(init=False)
+    replay_memory: ExperienceReplay = field(init=False)
     intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
     train_loss_log: tuple[list[float], ...] = field(init=False)
     episode_length_log: list[int] = field(init=False)
@@ -65,7 +66,7 @@ class MangoLayer:
         self.intrinsic_reward_log = tuple([] for _ in self.action_space)
         self.train_loss_log = tuple([] for _ in self.action_space)
         self.episode_length_log = []
-        self.replay_memory = ReplayMemory()
+        self.replay_memory = ExperienceReplay(abs_actions=self.abs_actions)
 
     @property
     def action_space(self) -> spaces.Discrete:
@@ -87,7 +88,8 @@ class MangoLayer:
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
             self.replay_memory.push(
-                Transition(start_obs, low_action, next_obs, reward, term, trunc, info)
+                comand=action,
+                transition=Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
             )
             trajectory += info["mango:trajectory"][1:]
             accumulated_reward += reward
@@ -116,8 +118,7 @@ class MangoLayer:
         for action in to_train:
             loss = self.policy.train(
                 comand=action,
-                transitions=self.replay_memory.sample(),
-                reward_generator=self.abs_actions.compatibility,
+                transitions=self.replay_memory.sample(action),
             )
             if loss is not None:
                 self.train_loss_log[action].append(loss)
