@@ -87,6 +87,8 @@ class DQnetPolicy(Policy):
     def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
         start_obs, actions, next_obs, rewards, terminated, truncated, info = zip(*transitions)
+        terminated_option = [i["mango:terminated"] for i in info]
+        truncated_option = [i["mango:truncated"] for i in info]
 
         start_obs = torch.as_tensor(
             np.stack(start_obs), dtype=torch.get_default_dtype(), device=self.device
@@ -97,7 +99,8 @@ class DQnetPolicy(Policy):
         )
         rewards = torch.as_tensor(np.array(rewards), device=self.device)
         terminated = torch.as_tensor(np.array(terminated), device=self.device)
-        truncated = torch.as_tensor(np.array(truncated), device=self.device)
+        terminated_option = torch.as_tensor(np.array(terminated_option), device=self.device)
+        truncated_option = torch.as_tensor(np.array(truncated_option), device=self.device)
 
         # double DQN - use qnet to select best action, use target_net to evaluate it
         qval_start = self.net(start_obs)
@@ -106,7 +109,8 @@ class DQnetPolicy(Policy):
             qval_next = self.net(next_obs)
             best_next_action = qval_next.argmax(axis=1).unsqueeze(1)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
-            best_qval_next[truncated] = 1.0
+            best_qval_next[terminated_option] = 1.0
+            best_qval_next[truncated_option] = 1.0
             best_qval_next[terminated] = 0.0
         loss = torch.nn.functional.smooth_l1_loss(
             qval_sampled_action, rewards + self.gamma * best_qval_next
