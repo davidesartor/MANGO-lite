@@ -61,7 +61,6 @@ class MangoLayer:
             comand_space=self.abs_actions.action_space,
             action_space=self.lower_layer.action_space,
             policy_params=policy_params,
-            obs_transform=self.abs_actions.mask,
         )
         self.intrinsic_reward_log = tuple([] for _ in self.action_space)
         self.train_loss_log = tuple([] for _ in self.action_space)
@@ -82,8 +81,8 @@ class MangoLayer:
 
         start_obs, trajectory, accumulated_reward = self.obs, [self.obs], 0.0
         while True:
-            start_obs = self.obs
-            low_action = self.policy.get_action(action, start_obs, self.randomness)
+            start_obs, masked_obs = self.obs, self.abs_actions.mask(self.obs)
+            low_action = self.policy.get_action(action, masked_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
