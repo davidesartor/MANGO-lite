@@ -3,6 +3,7 @@ from enum import IntEnum
 import random
 from typing import ClassVar
 import numpy as np
+import torch
 from ..utils import ObsType, ActType
 from .. import spaces
 from .abstract_actions import AbstractActions
@@ -84,4 +85,5 @@ class SubGridMovementOnehot(SubGridMovement):
         y, x = self.obs2coord(obs)
         y_lims = (y * self.cell_shape[0], y * self.cell_shape[0] + self.cell_shape[0] + 2)
         x_lims = (x * self.cell_shape[1], x * self.cell_shape[1] + self.cell_shape[1] + 2)
-        return ObsType(padded_obs[:, y_lims[0] : y_lims[1], x_lims[0] : x_lims[1]])
+        masked_obs = padded_obs[:, y_lims[0] : y_lims[1], x_lims[0] : x_lims[1]]
+        return masked_obs

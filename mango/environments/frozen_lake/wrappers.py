@@ -49,10 +49,10 @@ class CoordinateObservation(gym.ObservationWrapper):
     def observation(self, observation: int) -> ObsType:
         y, x = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
         if not self.one_hot:
-            return ObsType(np.array([y, x], dtype=np.uint8))
+            return np.array([y, x], dtype=np.uint8)
         one_hot = np.zeros((1, self.unwrapped.nrow, self.unwrapped.ncol), dtype=np.uint8)  # type: ignore
         one_hot[0, y, x] = 1
-        return ObsType(one_hot)
+        return one_hot
 
     def observation_inv(self, obs: ObsType) -> int:
         y, x = np.unravel_index(np.argmax(obs[0]), obs.shape[1:]) if self.one_hot else obs
@@ -78,12 +78,12 @@ class TensorObservation(gym.ObservationWrapper):
         map[row][col] = 0
         map = np.array(map, dtype=np.uint8)
         if not self.one_hot:
-            return ObsType(map[None, :, :])
+            return map[None, :, :]
         one_hot_map = np.zeros((4, *map.shape), dtype=np.uint8)
         Y, X = np.indices(map.shape)
         one_hot_map[map, Y, X] = 1
         one_hot_map = one_hot_map[[0, 2, 3], :, :]  # remove the 1="F"|"S" channel
-        return ObsType(one_hot_map)
+        return one_hot_map
 
     def observation_inv(self, obs: ObsType) -> int:
         agent_idx = np.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
@@ -101,4 +101,4 @@ class RenderObservation(gym.ObservationWrapper):
 
     def observation(self, observation: int) -> ObsType:
         render = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore
-        return ObsType(render)
+        return render

@@ -9,7 +9,7 @@ from . import spaces
 from .actions.abstract_actions import AbstractActions
 from .policies.dynamicpolicies import DQnetPolicyMapper, DynamicPolicy
 from .policies.experiencereplay import ExperienceReplay
-from .utils import ReplayMemory, Transition, ObsType, ActType, OptionType, torch_style_repr
+from .utils import Transition, ObsType, ActType, OptionType, torch_style_repr
 
 
 @dataclass(eq=False, slots=True, repr=False)

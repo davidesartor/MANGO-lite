@@ -2,15 +2,19 @@ from dataclasses import dataclass, field
 from typing import Any, Generic, Iterator, NamedTuple, NewType, Optional, TypeVar
 
 import numpy as np
+import numpy.typing as npt
 from matplotlib import pyplot as plt
 import random
+
+import torch
 
 
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
-ObsType = NewType("ObsType", np.ndarray)
+ObsType = npt.NDArray | torch.Tensor
 ActType = NewType("ActType", int)
 OptionType = ActType | tuple[int, ActType]
+
 
 T = TypeVar("T")
 
@@ -23,6 +27,16 @@ class Transition(NamedTuple):
     terminated: bool
     truncated: bool
     info: dict[str, Any]
+
+
+class TensorTransitionLists(NamedTuple):
+    start_obs: torch.Tensor
+    action: torch.Tensor
+    next_obs: torch.Tensor
+    reward: torch.Tensor
+    terminated: torch.Tensor
+    truncated: torch.Tensor
+    info: dict[str, torch.Tensor]
 
 
 @dataclass(eq=False)

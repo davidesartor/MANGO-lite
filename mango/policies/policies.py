@@ -7,7 +7,7 @@ import torch
 
 from .. import spaces
 from ..neuralnetworks.networks import ConvEncoder, squash
-from ..utils import Transition, ObsType, ActType
+from ..utils import TensorTransitionLists, Transition, ObsType, ActType
 
 
 class Policy(Protocol):
@@ -16,7 +16,7 @@ class Policy(Protocol):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
-    def train(self, transitions: Sequence[Transition]) -> float | None:
+    def train(self, transitions: TensorTransitionLists) -> float | None:
         ...
 
 
@@ -27,7 +27,7 @@ class RandomPolicy(Policy):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         return ActType(int(self.action_space.sample()))
 
-    def train(self, transitions: Sequence[Transition]) -> torch.Tensor | None:
+    def train(self, transitions: TensorTransitionLists) -> torch.Tensor | None:
         return None
 
 
@@ -56,22 +56,22 @@ class DQnetPolicy(Policy):
         with torch.no_grad():
             action_log_prob = self.qvalues(obs)
             if randomness == 0.0:
-                return ActType(action_log_prob.cpu().numpy().argmax())
+                return ActType(int(action_log_prob.argmax().item()))
             elif randomness == 1.0:
-                return ActType(np.random.choice(self.action_space.n))
+                return ActType(int(self.action_space.sample()))
             else:
                 temperture = -np.log(1 - randomness)
                 probs = torch.softmax(action_log_prob / temperture, dim=-1)
-                return ActType(np.random.choice(self.action_space.n, p=probs.cpu().numpy()))
+                return ActType(int(torch.multinomial(probs, 1).item()))
 
     def qvalues(self, obs: ObsType) -> torch.Tensor:
         if self.net.training:
             self.net.eval()
-        tensor_obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        tensor_obs = torch.as_tensor(obs, dtype=torch.get_default_dtype(), device=self.device)
         qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
         return qvals
 
-    def train(self, transitions: Sequence[Transition]) -> float | None:
+    def train(self, transitions: TensorTransitionLists) -> float | None:
         if not transitions:
             return None
         self.net.train()
@@ -87,23 +87,17 @@ class DQnetPolicy(Policy):
         for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
-    def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
+    def compute_loss(self, transitions: TensorTransitionLists) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
-        start_obs, actions, next_obs, rewards, terminated, truncated, info = zip(*transitions)
-        terminated_option = [i["mango:terminated"] for i in info]
-        truncated_option = [i["mango:truncated"] for i in info]
-
-        start_obs = torch.as_tensor(
-            np.stack(start_obs), dtype=torch.get_default_dtype(), device=self.device
-        )
-        actions = torch.as_tensor(np.array(actions), dtype=torch.int64, device=self.device)
-        next_obs = torch.as_tensor(
-            np.stack(next_obs), dtype=torch.get_default_dtype(), device=self.device
-        )
-        rewards = torch.as_tensor(np.array(rewards), device=self.device)
-        terminated = torch.as_tensor(np.array(terminated), device=self.device)
-        terminated_option = torch.as_tensor(np.array(terminated_option), device=self.device)
-        truncated_option = torch.as_tensor(np.array(truncated_option), device=self.device)
+        start_obs, actions, next_obs, rewards, terminated, truncated, info = transitions
+        start_obs = start_obs.to(dtype=torch.get_default_dtype(), device=self.device)
+        actions = actions.to(dtype=torch.int64, device=self.device)
+        next_obs = next_obs.to(dtype=torch.get_default_dtype(), device=self.device)
+        rewards = rewards.to(dtype=torch.get_default_dtype(), device=self.device)
+        terminated = terminated.to(dtype=torch.bool, device=self.device)
+        truncated = truncated.to(dtype=torch.bool, device=self.device)
+        terminated_option = info["mango:terminated"].to(dtype=torch.bool, device=self.device)
+        truncated_option = info["mango:truncated"].to(dtype=torch.bool, device=self.device)
 
         # double DQN - use qnet to select best action, use target_net to evaluate it
         qval_start = self.net(start_obs)

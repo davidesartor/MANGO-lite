@@ -2,8 +2,7 @@ from dataclasses import InitVar, dataclass, field
 from typing import Any, Protocol, Sequence, Callable
 
 from .policies import DQnetPolicy
-from ..utils import Transition, ObsType, ActType
-from ..actions.abstract_actions import AbstractActions
+from ..utils import Transition, ObsType, ActType, TensorTransitionLists
 from .. import spaces
 
 
@@ -17,8 +16,7 @@ class DynamicPolicy(Protocol):
     def train(
         self,
         comand: ActType,
-        transitions: Sequence[Transition],
-        abs_actions: AbstractActions,
+        transitions: TensorTransitionLists,
     ) -> float | None:
         ...
 
@@ -38,5 +36,5 @@ class DQnetPolicyMapper(DynamicPolicy):
     def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0):
         return self.policies[comand].get_action(obs, randomness)
 
-    def train(self, comand: ActType, transitions: Sequence[Transition]) -> float | None:
+    def train(self, comand: ActType, transitions: TensorTransitionLists) -> float | None:
         return self.policies[comand].train(transitions)
