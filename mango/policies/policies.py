@@ -71,7 +71,7 @@ class DQnetPolicy(Policy):
         qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
         return qvals
 
-    def train(self, transitions: Sequence[Transition]) -> torch.Tensor | None:
+    def train(self, transitions: Sequence[Transition]) -> float | None:
         if not transitions:
             return None
         self.net.train()
@@ -81,7 +81,7 @@ class DQnetPolicy(Policy):
         loss.backward()
         self.optimizer.step()
         self.update_target_net()
-        return loss.detach().cpu().numpy()
+        return loss.item()
 
     def update_target_net(self):
         for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
