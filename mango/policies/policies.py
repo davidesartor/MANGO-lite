@@ -1,11 +1,12 @@
 from dataclasses import InitVar, dataclass, field
+import random
 from typing import Any, Optional, Protocol, Sequence
 import copy
 import numpy as np
 import torch
 
 from .. import spaces
-from ..neuralnetworks.networks import ConvEncoder
+from ..neuralnetworks.networks import ConvEncoder, squash
 from ..utils import Transition, ObsType, ActType
 
 
@@ -26,7 +27,7 @@ class RandomPolicy(Policy):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         return ActType(int(self.action_space.sample()))
 
-    def train(self, transitions: Sequence[Transition]) -> float | None:
+    def train(self, transitions: Sequence[Transition]) -> torch.Tensor | None:
         return None
 
 
@@ -37,12 +38,13 @@ class DQnetPolicy(Policy):
     net_params: InitVar[dict[str, Any]] = dict()
     lr: InitVar[float] = 1e-3
     gamma: float = field(default=0.9, repr=False)
-    refresh_timer: tuple[int, int] = field(default=(0, 10), repr=False)
+    tau: float = field(default=0.05, repr=False)
 
-    net: ConvEncoder = field(init=False, repr=False)
-    target_net: ConvEncoder = field(init=False, repr=False)
+    net: torch.nn.Module = field(init=False, repr=False)
+    target_net: torch.nn.Module = field(init=False, repr=False)
     optimizer: torch.optim.Optimizer = field(init=False, repr=False)
     device: torch.device = field(init=False, repr=False, default=torch.device("cpu"))
+    compile: bool = field(init=False, repr=False, default=True)
 
     def __post_init__(self, net_params, lr):
         self.net = ConvEncoder(None, int(self.action_space.n), **net_params)
@@ -51,21 +53,25 @@ class DQnetPolicy(Policy):
         self.device = next(self.net.parameters()).device
 
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
-        action_log_prob = self.qvalues(obs)
-        if randomness > 0.0:
-            probs = torch.softmax(action_log_prob / randomness, dim=-1)
-            return ActType(int(torch.multinomial(probs, num_samples=1).item()))
-        else:
-            return ActType(int(action_log_prob.argmax().item()))
+        with torch.no_grad():
+            action_log_prob = self.qvalues(obs)
+            if randomness == 0.0:
+                return ActType(action_log_prob.cpu().numpy().argmax())
+            elif randomness == 1.0:
+                return ActType(np.random.choice(self.action_space.n))
+            else:
+                temperture = -np.log(1 - randomness)
+                probs = torch.softmax(action_log_prob / temperture, dim=-1)
+                return ActType(np.random.choice(self.action_space.n, p=probs.cpu().numpy()))
 
     def qvalues(self, obs: ObsType) -> torch.Tensor:
-        self.net.eval()
-        with torch.no_grad():
-            tensor_obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
-            qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
+        if self.net.training:
+            self.net.eval()
+        tensor_obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
         return qvals
 
-    def train(self, transitions: Sequence[Transition]) -> float | None:
+    def train(self, transitions: Sequence[Transition]) -> torch.Tensor | None:
         if not transitions:
             return None
         self.net.train()
@@ -75,14 +81,11 @@ class DQnetPolicy(Policy):
         loss.backward()
         self.optimizer.step()
         self.update_target_net()
-        return float(loss.item())
+        return loss.detach().cpu().numpy()
 
     def update_target_net(self):
-        t, tmax = self.refresh_timer
-        t = (t + 1) % tmax
-        self.refresh_timer = (t, tmax)
-        if t == 0:
-            self.target_net = copy.deepcopy(self.net)
+        for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def compute_loss(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components

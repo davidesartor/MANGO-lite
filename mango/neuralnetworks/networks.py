@@ -1,9 +1,14 @@
 from typing import Sequence
-import warnings
 import torch
 from . import basecells
 
 DEFAULT_ACTIVATION = torch.nn.CELU()
+
+
+def squash(net: torch.nn.Sequential) -> torch.nn.Sequential:
+    return torch.nn.Sequential(
+        *[squash(layer) if isinstance(layer, torch.nn.Sequential) else layer for layer in net]
+    )
 
 
 class LinearNet(torch.nn.Sequential):
@@ -28,16 +33,15 @@ class LinearNet(torch.nn.Sequential):
         for in_size, out_size, act, bn in zip(
             layer_sizes[:-1], layer_sizes[1:], activations, batch_norms
         ):
-            self.append(
-                basecells.LinearCell(
-                    in_features=in_size,
-                    out_features=out_size,
-                    activation=act,
-                    batch_norm=bn,
-                    bias=bias,
-                    **factory_params,
-                )
+            cell = basecells.LinearCell(
+                in_features=in_size,
+                out_features=out_size,
+                activation=act,
+                batch_norm=bn,
+                bias=bias,
+                **factory_params,
             )
+            self.append(cell)
 
 
 class ConvNet(torch.nn.Sequential):
@@ -74,16 +78,15 @@ class ConvNet(torch.nn.Sequential):
         for i, (in_size, out_size, act, bn) in enumerate(
             zip(layer_sizes[:-1], layer_sizes[1:], activations, batch_norms)
         ):
-            self.append(
-                cell_class(
-                    in_channels=in_size,
-                    out_channels=out_size,
-                    activation=act,
-                    batch_norm=bn,
-                    dilation=2**i,
-                    **cell_params,
-                )
+            cell = cell_class(
+                in_channels=in_size,
+                out_channels=out_size,
+                activation=act,
+                batch_norm=bn,
+                dilation=2**i,
+                **cell_params,
             )
+            self.append(cell)
 
 
 class ConvEncoder(torch.nn.Sequential):
@@ -107,8 +110,6 @@ class ConvEncoder(torch.nn.Sequential):
     ):
         super().__init__()
         factory_params = {"device": device, "dtype": dtype}
-        self._initialized = False
-        self.append(basecells.Squeeze(from_dim=2))
         self.append(
             ConvNet(
                 in_channels=in_channels,
@@ -139,11 +140,3 @@ class ConvEncoder(torch.nn.Sequential):
                 **factory_params,
             )
         )
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if not self._initialized:
-            if self[0].forward(input).ndim <= 2:
-                self.pop(0)
-                self.pop(0)
-            self._initialized = True
-        return super().forward(input)
