@@ -81,7 +81,7 @@ class MangoLayer:
 
         start_obs, trajectory, accumulated_reward = self.obs, [self.obs], 0.0
         while True:
-            start_obs, masked_obs = self.obs, self.abs_actions.mask(self.obs)
+            start_obs, masked_obs = self.obs, self.abs_actions.mask(action, self.obs)
             low_action = self.policy.get_action(action, masked_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
@@ -135,15 +135,17 @@ class Mango:
         self,
         environment: gym.Env[ObsType, ActType],
         abstract_actions: Sequence[AbstractActions],
-        policy_params: dict[str, Any] = dict(),
+        policy_params: dict[str, Any] | list[dict[str, Any]] = dict(),
         verbose=False,
     ) -> None:
-        self.verbose = verbose
+        if not isinstance(policy_params, list):
+            policy_params = [policy_params for _ in abstract_actions]
         indents = [2 * i if verbose else None for i in range(len(abstract_actions) + 1)]
+        self.verbose = verbose
         self.environment = MangoEnv(environment, verbose_indent=indents[-1])
         self.abstract_layers: list[MangoLayer] = []
-        for actions, indent in zip(abstract_actions, reversed(indents[:-1])):
-            self.abstract_layers.append(MangoLayer(actions, self.layers[-1], policy_params, indent))
+        for actions, indent, params in zip(abstract_actions, reversed(indents[:-1]), policy_params):
+            self.abstract_layers.append(MangoLayer(actions, self.layers[-1], params, indent))
         self.reset()
 
     @property

@@ -25,12 +25,10 @@ class ExperienceReplay:
         return self.size(comand) >= (quantity or self.batch_size)
 
     def push(self, comand: ActType, transition: Transition) -> None:
-        start_obs_masked = self.abs_actions.mask(transition.start_obs)
-        next_obs_masked = self.abs_actions.mask(transition.next_obs)
         for comand, memory in self.memories.items():
             processed_transition = transition._replace(
-                start_obs=start_obs_masked,
-                next_obs=next_obs_masked,
+                start_obs=self.abs_actions.mask(comand, transition.start_obs),
+                next_obs=self.abs_actions.mask(comand, transition.next_obs),
                 reward=self.abs_actions.compatibility(
                     comand, transition.start_obs, transition.next_obs
                 ),

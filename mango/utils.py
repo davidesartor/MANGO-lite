@@ -90,7 +90,7 @@ def smooth(signal, window=10):
     return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
 
 
-def plot_loss_reward(mango, actions):
+def plot_loss_reward(mango, actions, reward_lims=None):
     plt.figure(figsize=(12, 6))
     for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
         for action in actions:
@@ -103,6 +103,7 @@ def plot_loss_reward(mango, actions):
             plt.title(f"reward Layer {layer_idx}")
             plt.plot(smooth(layer.intrinsic_reward_log[action]), label=f"{action.name}")
             plt.legend()
+            plt.ylim(reward_lims)
 
         plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 3)
         plt.title(f"episode lenght Layer {layer_idx}")

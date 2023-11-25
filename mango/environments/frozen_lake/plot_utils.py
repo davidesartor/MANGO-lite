@@ -116,7 +116,7 @@ def plot_all_qvals(mango, trajectory=[], **kwargs):
             plt.subplot(n_rows, n_cols, row * (len(grid2d.Actions) + 1) + col)
             plt.title(f"Qvals AbsAction {action.name}")
             policy = layer.policy.policies[ActType(action)]
-            all_obs_list = all_observations(env, layer.abs_actions.mask)
+            all_obs_list = all_observations(env, lambda obs: layer.abs_actions.mask(action, obs))
             plot_qval_heatmap(policy, all_obs_list, env, **kwargs)
             plt.xticks([])
             plt.yticks([])

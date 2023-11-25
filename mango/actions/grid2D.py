@@ -35,7 +35,7 @@ class SubGridMovement(AbstractActions):
         y, x = obs
         return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
 
-    def mask(self, obs: ObsType) -> ObsType:
+    def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         return obs
 
     def beta(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> tuple[bool, bool]:
@@ -62,14 +62,14 @@ class SubGridMovement(AbstractActions):
 @dataclass(eq=False, slots=True, repr=True)
 class SubGridMovementOnehot(SubGridMovement):
     agent_channel: int = 0
-    add_valid_channel: bool = False
+    add_valid_channel: bool = True
 
     def obs2coord(self, obs: ObsType) -> tuple[int, int]:
         idx = np.argmax(obs[self.agent_channel, :, :])
         y, x = idx // self.grid_shape[1], idx % self.grid_shape[1]
         return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
 
-    def mask(self, obs: ObsType) -> ObsType:
+    def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         if obs.shape[0] == 1:
             return obs
 
@@ -82,7 +82,10 @@ class SubGridMovementOnehot(SubGridMovement):
             padded_obs[:, 1:-1, 1:-1] = obs
 
         y, x = self.obs2coord(obs)
-        y_lims = (y * self.cell_shape[0], y * self.cell_shape[0] + self.cell_shape[0] + 2)
-        x_lims = (x * self.cell_shape[1], x * self.cell_shape[1] + self.cell_shape[1] + 2)
-        masked_obs = padded_obs[:, y_lims[0] : y_lims[1], x_lims[0] : x_lims[1]]
+        d_y, d_x = Actions.to_delta(Actions(comand))
+        y_min_padd = y * self.cell_shape[0] + 1 + min(0, d_y)
+        y_max_padd = y_min_padd + self.cell_shape[0] + max(0, d_y)
+        x_min_padd = x * self.cell_shape[1] + 1 + min(0, d_x)
+        x_max_padd = x_min_padd + self.cell_shape[1] + max(0, d_x)
+        masked_obs = padded_obs[:, y_min_padd:y_max_padd, x_min_padd:x_max_padd]
         return masked_obs
