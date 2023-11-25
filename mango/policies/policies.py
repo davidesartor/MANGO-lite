@@ -43,7 +43,7 @@ class DQnetPolicy(Policy):
     net: torch.nn.Module = field(init=False, repr=False)
     target_net: torch.nn.Module = field(init=False, repr=False)
     optimizer: torch.optim.Optimizer = field(init=False, repr=False)
-    device: torch.device = field(init=False, repr=False, default=torch.device("cpu"))
+    device: torch.device = field(init=False, repr=False)
     compile: bool = field(init=False, repr=False, default=True)
 
     def __post_init__(self, net_params, lr):
