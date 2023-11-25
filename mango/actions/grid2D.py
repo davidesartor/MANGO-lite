@@ -84,8 +84,8 @@ class SubGridMovementOnehot(SubGridMovement):
         y, x = self.obs2coord(obs)
         d_y, d_x = Actions.to_delta(Actions(comand))
         y_min_padd = y * self.cell_shape[0] + 1 + min(0, d_y)
-        y_max_padd = y_min_padd + self.cell_shape[0] + max(0, d_y)
+        y_max_padd = y_min_padd + self.cell_shape[0] + abs(d_y)
         x_min_padd = x * self.cell_shape[1] + 1 + min(0, d_x)
-        x_max_padd = x_min_padd + self.cell_shape[1] + max(0, d_x)
+        x_max_padd = x_min_padd + self.cell_shape[1] + abs(d_x)
         masked_obs = padded_obs[:, y_min_padd:y_max_padd, x_min_padd:x_max_padd]
         return masked_obs

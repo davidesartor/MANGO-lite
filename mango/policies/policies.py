@@ -60,7 +60,7 @@ class DQnetPolicy(Policy):
             elif randomness == 1.0:
                 return ActType(int(self.action_space.sample()))
             else:
-                temperture = -np.log(1 - randomness)
+                temperture = -np.log(1 - randomness) / 2
                 probs = torch.softmax(action_log_prob / temperture, dim=-1)
                 return ActType(int(torch.multinomial(probs, 1).item()))
 

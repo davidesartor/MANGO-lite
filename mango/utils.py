@@ -85,14 +85,16 @@ def torch_style_repr(class_name: str, params: dict[str, str]) -> str:
     return repr_str
 
 
-def smooth(signal, window=10):
+def smooth(signal, window=0.05):
     signal = [s for s in signal if s is not None]
+    window = max(3, int(len(signal) * window))
     return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
 
 
-def plot_loss_reward(mango, actions, reward_lims=None):
+def plot_loss_reward(mango, actions, reward_lims=None, layers=None):
     plt.figure(figsize=(12, 6))
-    for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
+    for layer_idx in layers or range(1, len(mango.abstract_layers) + 1):
+        layer = mango.abstract_layers[layer_idx - 1]
         for action in actions:
             plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 1)
             plt.title(f"loss Layer {layer_idx}")
