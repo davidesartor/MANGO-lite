@@ -83,7 +83,7 @@ class ConvNet(torch.nn.Sequential):
                 out_channels=out_size,
                 activation=act,
                 batch_norm=bn,
-                dilation=2**i,
+                dilation=2 ** (i // 2),
                 **cell_params,
             )
             self.append(cell)
