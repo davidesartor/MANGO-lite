@@ -22,6 +22,12 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         super().__init__(render_mode, desc, map_name, is_slippery)
         self.action_space = spaces.Discrete(4)
 
+    def render(self):
+        rendered = super().render()
+        if self.render_mode == "rgb_array":
+            rendered = rendered[: self.cell_size[0] * self.nrow, : self.cell_size[1] * self.ncol]  # type: ignore
+        return rendered
+
 
 class ReInitOnReset(gym.Wrapper):
     def __init__(self, env: gym.Env, **init_kwargs):
