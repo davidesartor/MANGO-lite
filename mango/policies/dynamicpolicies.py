@@ -1,9 +1,10 @@
 from dataclasses import InitVar, dataclass, field
-from typing import Any, Protocol, Sequence, Callable
+from typing import Any, Protocol
 
-from .policies import DQnetPolicy
-from ..utils import Transition, ObsType, ActType, TensorTransitionLists
 from .. import spaces
+from ..utils import ObsType, ActType
+from .experiencereplay import TensorTransitionLists
+from .policies import DQnetPolicy
 
 
 class DynamicPolicy(Protocol):

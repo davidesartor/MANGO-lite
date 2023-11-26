@@ -1,11 +1,72 @@
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Optional, Sequence, NamedTuple, Any
 import random
 import numpy as np
 import torch
 
 from mango.actions.abstract_actions import AbstractActions
-from ..utils import TensorTransitionLists, Transition, ObsType, ActType
+from ..utils import ObsType, ActType
+
+
+class Transition(NamedTuple):
+    start_obs: ObsType
+    action: ActType
+    next_obs: ObsType
+    reward: float
+    terminated: bool
+    truncated: bool
+    info: dict[str, Any]
+
+
+class TensorTransitionLists(NamedTuple):
+    start_obs: torch.Tensor
+    action: torch.Tensor
+    next_obs: torch.Tensor
+    reward: torch.Tensor
+    terminated: torch.Tensor
+    truncated: torch.Tensor
+    info: list[dict[str, Any]]
+
+
+@dataclass(eq=False, slots=True, repr=True)
+class ReplayMemory:
+    batch_size: int = 256
+    capacity: int = 2**10
+    memory: list[Transition] = field(init=False)
+
+    def size(self) -> int:
+        return len(self.memory)
+
+    def can_sample(self, quantity: Optional[int] = None) -> bool:
+        return self.size() >= (quantity or self.batch_size)
+
+    def push(self, transition: Transition) -> None:
+        if len(self.memory) < self.capacity:
+            self.memory.append(transition)
+        else:
+            self.memory[np.random.randint(self.capacity)] = transition
+
+    def extend(self, items: Sequence[Transition]) -> None:
+        for item in items:
+            self.push(item)
+
+    def sample(self, quantity: Optional[int] = None) -> TensorTransitionLists:
+        if not self.can_sample(quantity):
+            raise ValueError("Not enough samples to sample from")
+
+        start_obs, action, next_obs, reward, terminated, truncated, info = zip(
+            *random.choices(self.memory, k=(quantity or self.batch_size))
+        )
+        start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.get_default_dtype())
+        action = torch.as_tensor(np.array(action), dtype=torch.int64)
+        next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.get_default_dtype())
+        reward = torch.as_tensor(np.array(reward), dtype=torch.float32)
+        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool)
+        truncated = torch.as_tensor(np.array(truncated), dtype=torch.bool)
+        info = list(info)
+        return TensorTransitionLists(
+            start_obs, action, next_obs, reward, terminated, truncated, info
+        )
 
 
 @dataclass(eq=False, slots=True, repr=True)

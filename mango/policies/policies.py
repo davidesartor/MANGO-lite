@@ -6,8 +6,9 @@ import numpy as np
 import torch
 
 from .. import spaces
-from ..neuralnetworks.networks import ConvEncoder, squash
-from ..utils import TensorTransitionLists, Transition, ObsType, ActType
+from ..neuralnetworks.networks import ConvEncoder
+from ..utils import ObsType, ActType
+from .experiencereplay import TensorTransitionLists
 
 
 class Policy(Protocol):
@@ -42,13 +43,18 @@ class DQnetPolicy(Policy):
 
     net: torch.nn.Module = field(init=False, repr=False)
     target_net: torch.nn.Module = field(init=False, repr=False)
+    ema_model: torch.nn.Module | None = field(init=False, repr=False, default=None)
     optimizer: torch.optim.Optimizer = field(init=False, repr=False)
     device: torch.device = field(init=False, repr=False)
     compile: bool = field(init=False, repr=False, default=True)
 
     def __post_init__(self, net_params, lr):
-        self.net = ConvEncoder(None, int(self.action_space.n), **net_params)
-        self.target_net = ConvEncoder(None, int(self.action_space.n), **net_params)
+        self.net = ConvEncoder(
+            in_channels=None, out_features=int(self.action_space.n), **net_params
+        )
+        self.target_net = ConvEncoder(
+            in_channels=None, out_features=int(self.action_space.n), **net_params
+        )
         self.optimizer = torch.optim.RAdam(self.net.parameters(recurse=True), lr=lr)
         self.device = next(self.net.parameters()).device
 
@@ -60,15 +66,17 @@ class DQnetPolicy(Policy):
             elif randomness == 1.0:
                 return ActType(int(self.action_space.sample()))
             else:
-                temperture = -np.log(1 - randomness) / 2
+                temperture = -np.log2(1 - randomness) / 2
                 probs = torch.softmax(action_log_prob / temperture, dim=-1)
                 return ActType(int(torch.multinomial(probs, 1).item()))
 
     def qvalues(self, obs: ObsType) -> torch.Tensor:
-        if self.net.training:
-            self.net.eval()
         tensor_obs = torch.as_tensor(obs, dtype=torch.get_default_dtype(), device=self.device)
-        qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
+        if self.ema_model is not None:
+            qvals = self.ema_model(tensor_obs.unsqueeze(0)).squeeze(0)
+        else:
+            qvals = self.net(tensor_obs.unsqueeze(0)).squeeze(0)
+            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
         return qvals
 
     def train(self, transitions: TensorTransitionLists) -> float | None:
@@ -81,6 +89,8 @@ class DQnetPolicy(Policy):
         loss.backward()
         self.optimizer.step()
         self.update_target_net()
+        if self.ema_model is not None:
+            self.ema_model.update_parameters(self.net)
         return loss.item()
 
     def update_target_net(self):
@@ -107,7 +117,10 @@ class DQnetPolicy(Policy):
         qval_start = self.net(start_obs)
         qval_sampled_action = torch.gather(qval_start, 1, actions.unsqueeze(1)).squeeze(1)
         with torch.no_grad():
-            qval_next = self.net(next_obs)
+            if self.ema_model is not None:
+                qval_next = self.ema_model(next_obs)
+            else:
+                qval_next = self.net(next_obs)
             best_next_action = qval_next.argmax(axis=1).unsqueeze(1)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
             best_qval_next[terminated_option] = 1.0

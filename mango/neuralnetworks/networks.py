@@ -13,8 +13,8 @@ class LinearNet(torch.nn.Sequential):
     def __init__(
         self,
         in_features: int | None,
+        hidden_features: Sequence[int],
         out_features: int,
-        hidden_features: Sequence[int] = (16,),
         activation: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         out_activation: torch.nn.Module | None = None,
         batch_norm: bool = True,
@@ -46,9 +46,9 @@ class ConvNet(torch.nn.Sequential):
     def __init__(
         self,
         in_channels: int | None,
+        hidden_channels: Sequence[int],
         out_channels: int,
         kernel_size: int = 3,
-        hidden_channels: Sequence[int] = (16,),
         activation: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         out_activation: torch.nn.Module | None = None,
         batch_norm: bool = True,
@@ -85,10 +85,10 @@ class ConvEncoder(torch.nn.Sequential):
     def __init__(
         self,
         in_channels: int | None,
+        hidden_channels: Sequence[int],
+        hidden_features: Sequence[int],
         out_features: int,
         kernel_size: int = 3,
-        hidden_channels: Sequence[int] = (64, 64),
-        hidden_features: Sequence[int] = (8, 8),
         activation_conv: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         activation_linear: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         activation_out: torch.nn.Module | None = None,

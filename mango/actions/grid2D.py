@@ -62,7 +62,7 @@ class SubGridMovement(AbstractActions):
 @dataclass(eq=False, slots=True, repr=True)
 class SubGridMovementOnehot(SubGridMovement):
     agent_channel: int = 0
-    add_valid_channel: bool = True
+    invalid_channel: int | None = None
 
     def obs2coord(self, obs: ObsType) -> tuple[int, int]:
         idx = np.argmax(obs[self.agent_channel, :, :])
@@ -73,12 +73,13 @@ class SubGridMovementOnehot(SubGridMovement):
         if obs.shape[0] == 1:
             return obs
 
-        if self.add_valid_channel:
+        if self.invalid_channel is None:
             padded_obs = np.zeros((obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2))
             padded_obs[:-1, 1:-1, 1:-1] = obs
             padded_obs[-1, 1:-1, 1:-1] = 1
         else:
             padded_obs = np.zeros((obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2))
+            padded_obs[self.invalid_channel] = 1
             padded_obs[:, 1:-1, 1:-1] = obs
 
         y, x = self.obs2coord(obs)

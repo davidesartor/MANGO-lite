@@ -1,12 +1,10 @@
-import torch
-
-
 # %%
-def foo(x, y):
-    a = torch.sin(x)
-    b = torch.cos(y)
-    return a + b
+import matplotlib.pyplot as plt
+import numpy as np
 
-
-opt_foo1 = torch.compile(foo)
-print(opt_foo1(torch.randn(10, 10), torch.randn(10, 10)))
+t = np.linspace(0.99, 0, 100)
+r = -np.log2(1 - t) / 2
+plt.plot(t, r)
+plt.plot(t, t)
+plt.ylim(0, 1)
+plt.show()

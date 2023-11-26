@@ -3,7 +3,8 @@ from typing import Any, Optional, Sequence
 from .. import spaces
 from ..mango import Mango
 from ..policies.policies import Policy, DQnetPolicy
-from ..utils import ReplayMemory, Transition, ObsType, ActType, torch_style_repr
+from ..policies.experiencereplay import ReplayMemory, Transition
+from ..utils import ObsType, ActType, torch_style_repr
 
 
 class Agent:
