@@ -1,7 +1,8 @@
-from typing import Any, Sequence
 import torch
 from torch import nn
 from .lazymodules import LazyConvNd, LazyBatchNormNd
+
+DEFAULT_ACTIVATION = torch.nn.CELU()
 
 
 class Squeeze(nn.Module):
@@ -23,7 +24,7 @@ class LinearCell(nn.Sequential):
         self,
         in_features: int | None,
         out_features: int,
-        activation: nn.Module | None = nn.ReLU(),
+        activation: nn.Module | None = DEFAULT_ACTIVATION,
         batch_norm: bool = True,
         bias: bool = True,
         device: torch.device | None = None,
@@ -52,7 +53,7 @@ class ConvCell(nn.Sequential):
         in_channels: int | None,
         out_channels: int,
         kernel_size: int = 3,
-        activation: nn.Module | None = nn.ReLU(),
+        activation: nn.Module | None = DEFAULT_ACTIVATION,
         batch_norm: bool = True,
         conv_dim: int | None = None,
         stride: int = 1,
@@ -68,7 +69,7 @@ class ConvCell(nn.Sequential):
         conv_params = {
             "kernel_size": kernel_size,
             "stride": stride,
-            "padding": padding,
+            "padding": padding if stride == 1 else kernel_size // 2,
             "dilation": dilation,
             "groups": groups,
             "bias": bias,
@@ -110,9 +111,9 @@ class ResConvCell(nn.Module):
         in_channels: int | None,
         out_channels: int,
         kernel_size: int = 3,
-        activation: nn.Module | None = nn.ReLU(),
+        activation: nn.Module | None = DEFAULT_ACTIVATION,
+        out_activation: bool = True,
         batch_norm: bool = True,
-        out_batch_norm: bool = True,
         conv_dim: int | None = None,
         stride: int = 1,
         padding: str | int = "same",
@@ -127,9 +128,7 @@ class ResConvCell(nn.Module):
         conv_params = {
             "out_channels": out_channels,
             "conv_dim": conv_dim,
-            "stride": stride,
             "padding": "same",
-            "dilation": dilation,
             "groups": groups,
             "bias": bias,
             **factory_params,
@@ -140,14 +139,16 @@ class ResConvCell(nn.Module):
                 in_channels=in_channels,
                 kernel_size=kernel_size,
                 activation=activation,
-                batch_norm=batch_norm,
+                batch_norm=False,
                 **conv_params,
             ),
             ConvCell(
                 in_channels=out_channels,
                 kernel_size=kernel_size,
                 activation=None,
-                batch_norm=out_batch_norm,
+                batch_norm=batch_norm,
+                stride=stride,
+                dilation=dilation,
                 **conv_params,
             ),
         )
@@ -155,10 +156,10 @@ class ResConvCell(nn.Module):
             in_channels=in_channels,
             kernel_size=1,
             activation=None,
-            batch_norm=out_batch_norm,
+            stride=stride,
             **conv_params,
         )
-        self.activation = activation
+        self.activation = activation if out_activation else None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv_path(x) + self.residual_path(x)

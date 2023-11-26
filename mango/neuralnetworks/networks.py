@@ -2,8 +2,6 @@ from typing import Sequence
 import torch
 from . import basecells
 
-DEFAULT_ACTIVATION = torch.nn.CELU()
-
 
 def squash(net: torch.nn.Sequential) -> torch.nn.Sequential:
     return torch.nn.Sequential(
@@ -17,7 +15,7 @@ class LinearNet(torch.nn.Sequential):
         in_features: int | None,
         out_features: int,
         hidden_features: Sequence[int] = (16,),
-        activation: torch.nn.Module = DEFAULT_ACTIVATION,
+        activation: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         out_activation: torch.nn.Module | None = None,
         batch_norm: bool = True,
         out_batch_norm: bool = True,
@@ -51,7 +49,7 @@ class ConvNet(torch.nn.Sequential):
         out_channels: int,
         kernel_size: int = 3,
         hidden_channels: Sequence[int] = (16,),
-        activation: torch.nn.Module = DEFAULT_ACTIVATION,
+        activation: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         out_activation: torch.nn.Module | None = None,
         batch_norm: bool = True,
         out_batch_norm: bool = True,
@@ -63,14 +61,7 @@ class ConvNet(torch.nn.Sequential):
     ):
         super().__init__()
         factory_params = {"device": device, "dtype": dtype}
-        cell_params = {
-            "kernel_size": kernel_size,
-            "stride": 1,  # dilation only supported with stride=1
-            "padding": "same",  # easier to handle growing dilation
-            "groups": groups,
-            "bias": bias,
-            **factory_params,
-        }
+        cell_params = {"kernel_size": kernel_size, "groups": groups, "bias": bias, **factory_params}
         cell_class = basecells.ResConvCell if residual_connections else basecells.ConvCell
         layer_sizes = [in_channels, *hidden_channels, out_channels]
         activations = [activation for _ in hidden_channels] + [out_activation]
@@ -78,12 +69,13 @@ class ConvNet(torch.nn.Sequential):
         for i, (in_size, out_size, act, bn) in enumerate(
             zip(layer_sizes[:-1], layer_sizes[1:], activations, batch_norms)
         ):
+            stride = 2 if residual_connections else 1 + i % 2
             cell = cell_class(
                 in_channels=in_size,
                 out_channels=out_size,
                 activation=act,
                 batch_norm=bn,
-                dilation=2 ** (i // 2),
+                stride=stride,
                 **cell_params,
             )
             self.append(cell)
@@ -97,8 +89,8 @@ class ConvEncoder(torch.nn.Sequential):
         kernel_size: int = 3,
         hidden_channels: Sequence[int] = (64, 64),
         hidden_features: Sequence[int] = (8, 8),
-        activation_conv: torch.nn.Module = DEFAULT_ACTIVATION,
-        activation_linear: torch.nn.Module = DEFAULT_ACTIVATION,
+        activation_conv: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
+        activation_linear: torch.nn.Module = basecells.DEFAULT_ACTIVATION,
         activation_out: torch.nn.Module | None = None,
         residual_connections: bool = False,
         groups: int = 1,
