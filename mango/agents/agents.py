@@ -1,8 +1,10 @@
+import pickle
 from typing import Any, Optional, Sequence
 from .. import spaces
 from ..mango import Mango
 from ..policies.policies import Policy, DQnetPolicy
-from ..utils import ReplayMemory, Transition, ObsType, ActType, torch_style_repr
+from ..policies.experiencereplay import ReplayMemory, Transition
+from ..utils import ObsType, ActType, torch_style_repr
 
 
 class Agent:
@@ -43,9 +45,10 @@ class Agent:
         return torch_style_repr(self.__class__.__name__, dict(policy=str(self.policy)))
 
     def save_to(self, path: str, include_mango: bool = True):
-        self.reset()
+        self.mango.reset()
+        mango = self.mango
         if not include_mango:
-            mango, self.mango = self.mango, None
+            self.mango: Mango = None  # type: ignore
             raise Warning("Mango not saved, this may cause problems when loading")
         with open(path, "wb") as f:
             pickle.dump(self, f)

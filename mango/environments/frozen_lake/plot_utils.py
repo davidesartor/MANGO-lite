@@ -100,9 +100,9 @@ def plot_all_abstractions(mango, trajectory=[]):
         plt.yticks([])
 
 
-def plot_all_qvals(mango, trajectory=[], **kwargs):
+def plot_all_qvals(mango, trajectory=[], size=3, **kwargs):
     env = mango.environment.environment
-    plt.figure(figsize=(4 * len(grid2d.Actions) + 3, 3 * len(mango.abstract_layers)))
+    plt.figure(figsize=((size + 1) * len(grid2d.Actions) + size, size * len(mango.abstract_layers)))
     n_rows, n_cols = len(mango.abstract_layers), len(grid2d.Actions) + 1
     for row, layer in enumerate(mango.abstract_layers):
         plt.subplot(n_rows, n_cols, row * (len(grid2d.Actions) + 1) + 1)
@@ -116,7 +116,7 @@ def plot_all_qvals(mango, trajectory=[], **kwargs):
             plt.subplot(n_rows, n_cols, row * (len(grid2d.Actions) + 1) + col)
             plt.title(f"Qvals AbsAction {action.name}")
             policy = layer.policy.policies[ActType(action)]
-            all_obs_list = all_observations(env, layer.abs_actions.mask)
+            all_obs_list = all_observations(env, lambda obs: layer.abs_actions.mask(action, obs))
             plot_qval_heatmap(policy, all_obs_list, env, **kwargs)
             plt.xticks([])
             plt.yticks([])

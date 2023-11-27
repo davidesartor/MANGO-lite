@@ -8,7 +8,8 @@ import numpy as np
 from . import spaces
 from .actions.abstract_actions import AbstractActions
 from .policies.dynamicpolicies import DQnetPolicyMapper, DynamicPolicy
-from .utils import ReplayMemory, Transition, ObsType, ActType, OptionType, torch_style_repr
+from .policies.experiencereplay import ExperienceReplay, Transition
+from .utils import ObsType, ActType, OptionType, torch_style_repr
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -50,7 +51,7 @@ class MangoLayer:
     randomness: float = 0.0
 
     policy: DQnetPolicyMapper = field(init=False)
-    replay_memory: ReplayMemory[Transition] = field(init=False)
+    replay_memory: ExperienceReplay = field(init=False)
     intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
     train_loss_log: tuple[list[float], ...] = field(init=False)
     episode_length_log: list[int] = field(init=False)
@@ -60,12 +61,11 @@ class MangoLayer:
             comand_space=self.abs_actions.action_space,
             action_space=self.lower_layer.action_space,
             policy_params=policy_params,
-            obs_transform=self.abs_actions.mask,
         )
         self.intrinsic_reward_log = tuple([] for _ in self.action_space)
         self.train_loss_log = tuple([] for _ in self.action_space)
         self.episode_length_log = []
-        self.replay_memory = ReplayMemory()
+        self.replay_memory = ExperienceReplay(abs_actions=self.abs_actions)
 
     @property
     def action_space(self) -> spaces.Discrete:
@@ -81,13 +81,14 @@ class MangoLayer:
 
         start_obs, trajectory, accumulated_reward = self.obs, [self.obs], 0.0
         while True:
-            start_obs = self.obs
-            low_action = self.policy.get_action(action, start_obs, self.randomness)
+            start_obs, masked_obs = self.obs, self.abs_actions.mask(action, self.obs)
+            low_action = self.policy.get_action(action, masked_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
             self.replay_memory.push(
-                Transition(start_obs, low_action, next_obs, reward, term, trunc, info)
+                comand=action,
+                transition=Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
             )
             trajectory += info["mango:trajectory"][1:]
             accumulated_reward += reward
@@ -114,13 +115,13 @@ class MangoLayer:
         elif action is None:
             to_train = [act for act in self.action_space]
         for action in to_train:
-            loss = self.policy.train(
-                comand=action,
-                transitions=self.replay_memory.sample(),
-                reward_generator=self.abs_actions.compatibility,
-            )
-            if loss is not None:
-                self.train_loss_log[action].append(loss)
+            if self.replay_memory.can_sample(action):
+                loss = self.policy.train(
+                    comand=action,
+                    transitions=self.replay_memory.sample(action),
+                )
+                if loss is not None:
+                    self.train_loss_log[action].append(loss)
 
     def __repr__(self) -> str:
         return torch_style_repr(
@@ -134,15 +135,17 @@ class Mango:
         self,
         environment: gym.Env[ObsType, ActType],
         abstract_actions: Sequence[AbstractActions],
-        policy_params: dict[str, Any] = dict(),
+        policy_params: dict[str, Any] | list[dict[str, Any]] = dict(),
         verbose=False,
     ) -> None:
-        self.verbose = verbose
+        if not isinstance(policy_params, list):
+            policy_params = [policy_params for _ in abstract_actions]
         indents = [2 * i if verbose else None for i in range(len(abstract_actions) + 1)]
+        self.verbose = verbose
         self.environment = MangoEnv(environment, verbose_indent=indents[-1])
         self.abstract_layers: list[MangoLayer] = []
-        for actions, indent in zip(abstract_actions, reversed(indents[:-1])):
-            self.abstract_layers.append(MangoLayer(actions, self.layers[-1], policy_params, indent))
+        for actions, indent, params in zip(abstract_actions, reversed(indents[:-1]), policy_params):
+            self.abstract_layers.append(MangoLayer(actions, self.layers[-1], params, indent))
         self.reset()
 
     @property
@@ -161,8 +164,8 @@ class Mango:
         if isinstance(option, tuple):
             return option
         offsets = np.cumsum([layer.action_space.n for layer in self.layers])
-        layer = int(np.searchsorted(option, offsets))
-        action = option if layer == 0 else ActType(option - offsets[layer - 1])
+        layer = int(np.searchsorted([0] + list(offsets), option + 1)) - 1
+        action = ActType(option - offsets[layer])
         return layer, action
 
     def set_randomness(self, randomness: float, layer: Optional[int] = None):
@@ -232,8 +235,9 @@ class Mango:
 
     def save_to(self, path: str, include_env: bool = True):
         self.reset()
+        env = self.environment
         if not include_env:
-            env, self.environment = self.environment, None
+            self.environment: MangoEnv = None  # type: ignore
             raise Warning("Environment not saved, this may cause problems when loading")
         with open(path, "wb") as f:
             pickle.dump(self, f)
