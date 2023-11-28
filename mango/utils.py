@@ -1,17 +1,4 @@
-from typing import NewType, TypeVar
-import numpy.typing as npt
 from matplotlib import pyplot as plt
-
-import torch
-
-
-# this is not a good way to type this version
-# but it will minimize changes when addin support for generic types
-ObsType = npt.NDArray | torch.Tensor
-ActType = NewType("ActType", int)
-OptionType = ActType | tuple[int, ActType]
-
-T = TypeVar("T")
 
 
 def add_indent(s: str, indent=2, skip_first=True) -> str:
@@ -57,3 +44,14 @@ def plot_loss_reward(mango, actions, reward_lims=None, layers=None):
         plt.subplot(len(mango.abstract_layers), 3, 3 * (layer_idx - 1) + 3)
         plt.title(f"episode lenght Layer {layer_idx}")
         plt.plot(smooth(layer.episode_length_log))
+
+
+def plot_agent_loss_reward(agent):
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.title(f"loss")
+    plt.semilogy(smooth(agent.train_loss_log))
+
+    plt.subplot(1, 2, 2)
+    plt.title(f"reward")
+    plt.plot(smooth(agent.reward_log))

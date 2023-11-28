@@ -1,18 +1,17 @@
 from dataclasses import dataclass
 from enum import IntEnum
 import random
-from typing import ClassVar
+from typing import ClassVar, Optional
 import numpy as np
-from ..utils import ObsType, ActType
-from .. import spaces
-from .abstract_actions import AbstractActions
+from mango.protocols import AbstractActions, ObsType, ActType
+from mango import spaces
 
 
 class Actions(IntEnum):
-    LEFT = ActType(0)
-    DOWN = ActType(1)
-    RIGHT = ActType(2)
-    UP = ActType(3)
+    LEFT = 0
+    DOWN = 1
+    RIGHT = 2
+    UP = 3
 
     def to_delta(self) -> tuple[int, int]:
         return {
@@ -23,20 +22,24 @@ class Actions(IntEnum):
         }[self]
 
 
-@dataclass(eq=False, slots=True, repr=True)
+@dataclass(eq=False, slots=True, frozen=True, repr=True)
 class SubGridMovement(AbstractActions):
-    action_space: ClassVar[spaces.Discrete] = spaces.Discrete(4)
     cell_shape: tuple[int, int]
     grid_shape: tuple[int, int]
+    agent_channel: Optional[int] = None
+    invalid_channel: Optional[int] = None
     p_termination: float = 0.1
     reward: float = 1.0
 
-    def obs2coord(self, obs: ObsType) -> tuple[int, int]:
-        y, x = obs
-        return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
+    action_space: ClassVar = spaces.Discrete(4)
 
-    def mask(self, comand: ActType, obs: ObsType) -> ObsType:
-        return obs
+    def obs2coord(self, obs: ObsType) -> tuple[int, int]:
+        if self.agent_channel is not None:
+            idx = np.argmax(obs[self.agent_channel, :, :])
+            y, x = idx // self.grid_shape[1], idx % self.grid_shape[1]
+        else:
+            y, x = obs
+        return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
 
     def beta(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> tuple[bool, bool]:
         start_y, start_x = self.obs2coord(start_obs)
@@ -48,7 +51,7 @@ class SubGridMovement(AbstractActions):
     def compatibility(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> float:
         start_y, start_x = self.obs2coord(start_obs)
         next_y, next_x = self.obs2coord(next_obs)
-        delta_y, delta_x = Actions.to_delta(Actions(action))
+        delta_y, delta_x = Actions.to_delta(Actions(int(action)))
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
 
         if next_y == next_y_expected and next_x == next_x_expected:
@@ -58,19 +61,8 @@ class SubGridMovement(AbstractActions):
         else:
             return -1.0
 
-
-@dataclass(eq=False, slots=True, repr=True)
-class SubGridMovementOnehot(SubGridMovement):
-    agent_channel: int = 0
-    invalid_channel: int | None = None
-
-    def obs2coord(self, obs: ObsType) -> tuple[int, int]:
-        idx = np.argmax(obs[self.agent_channel, :, :])
-        y, x = idx // self.grid_shape[1], idx % self.grid_shape[1]
-        return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
-
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
-        if obs.shape[0] == 1:
+        if self.agent_channel is None:
             return obs
 
         if self.invalid_channel is None:
@@ -83,7 +75,7 @@ class SubGridMovementOnehot(SubGridMovement):
             padded_obs[:, 1:-1, 1:-1] = obs
 
         y, x = self.obs2coord(obs)
-        d_y, d_x = Actions.to_delta(Actions(comand))
+        d_y, d_x = Actions.to_delta(Actions(int(comand)))
         y_min_padd = y * self.cell_shape[0] + 1 + min(0, d_y)
         y_max_padd = y_min_padd + self.cell_shape[0] + abs(d_y)
         x_min_padd = x * self.cell_shape[1] + 1 + min(0, d_x)

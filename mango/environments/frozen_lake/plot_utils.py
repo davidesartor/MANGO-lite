@@ -2,8 +2,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
-from ...utils import ActType, ObsType
-from ...actions import grid2d
+from . import Actions, ObsType
 
 
 def plot_grid(env, cell_shape: tuple[int, int], alpha=0.2):
@@ -70,7 +69,7 @@ def plot_qval_heatmap(policy, all_obs_list, env, cmap="RdYlGn", vmin=-1, vmax=1,
     Y, X = np.indices(env.unwrapped.desc.shape)
     for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask):
         if is_valid:
-            dy, dx = grid2d.Actions.to_delta(act)
+            dy, dx = Actions.to_delta(act)
             # draw arrows for actions in the middle of the cell
             plt.annotate(
                 "",
@@ -102,20 +101,20 @@ def plot_all_abstractions(mango, trajectory=[]):
 
 def plot_all_qvals(mango, trajectory=[], size=3, **kwargs):
     env = mango.environment.environment
-    plt.figure(figsize=((size + 1) * len(grid2d.Actions) + size, size * len(mango.abstract_layers)))
-    n_rows, n_cols = len(mango.abstract_layers), len(grid2d.Actions) + 1
+    plt.figure(figsize=((size + 1) * len(Actions) + size, size * len(mango.abstract_layers)))
+    n_rows, n_cols = len(mango.abstract_layers), len(Actions) + 1
     for row, layer in enumerate(mango.abstract_layers):
-        plt.subplot(n_rows, n_cols, row * (len(grid2d.Actions) + 1) + 1)
+        plt.subplot(n_rows, n_cols, row * (len(Actions) + 1) + 1)
         plt.title(f"Layer {row+1} Abstraction")
         plt.imshow(env.render())  # type: ignore
         plot_trajectory(trajectory, env)
         plot_grid(env, layer.abs_actions.cell_shape)
         plt.xticks([])
         plt.yticks([])
-        for col, action in enumerate(grid2d.Actions, start=2):
-            plt.subplot(n_rows, n_cols, row * (len(grid2d.Actions) + 1) + col)
+        for col, action in enumerate(Actions, start=2):
+            plt.subplot(n_rows, n_cols, row * (len(Actions) + 1) + col)
             plt.title(f"Qvals AbsAction {action.name}")
-            policy = layer.policy.policies[ActType(action)]
+            policy = layer.policy.policies[action]
             all_obs_list = all_observations(env, lambda obs: layer.abs_actions.mask(action, obs))
             plot_qval_heatmap(policy, all_obs_list, env, **kwargs)
             plt.xticks([])

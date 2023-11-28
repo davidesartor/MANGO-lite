@@ -1,29 +1,35 @@
 import pickle
 from typing import Any, Optional, Sequence
 from .. import spaces
-from ..mango import Mango
+from ..mango import MangoEnv, Mango
 from ..policies.policies import Policy, DQnetPolicy
 from ..policies.experiencereplay import ReplayMemory, Transition
 from ..utils import ObsType, ActType, torch_style_repr
 
 
 class Agent:
-    def __init__(self, mango: Mango, policy_params: dict[str, Any] = dict()):
+    def __init__(
+        self,
+        mango: MangoEnv | Mango,
+        policy_params: dict[str, Any] = dict(),
+    ):
         self.mango = mango
-        self.policy = DQnetPolicy(action_space=mango.option_space, **policy_params)
+        self.policy = DQnetPolicy(action_space=mango.action_space, **policy_params)
         self.replay_memory = ReplayMemory()
         self.train_loss_log = []
         self.reward_log = []
 
     def step(self, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
         start_obs = self.mango.obs
-        option = self.policy.get_action(start_obs, randomness)
-        next_obs, reward, term, trunc, info = self.mango.step(option)
-        self.replay_memory.push(Transition(start_obs, option, next_obs, reward, term, trunc, info))
+        action = self.policy.get_action(start_obs, randomness)
+        next_obs, reward, term, trunc, info = self.mango.step(action)
+        self.replay_memory.push(Transition(start_obs, action, next_obs, reward, term, trunc, info))
         self.reward_log.append(reward)
         return self.mango.obs, reward, term, trunc, info
 
     def train(self) -> float | None:
+        if not self.replay_memory.can_sample():
+            return None
         loss = self.policy.train(transitions=self.replay_memory.sample())
         if loss is not None:
             self.train_loss_log.append(loss)
@@ -48,7 +54,7 @@ class Agent:
         self.mango.reset()
         mango = self.mango
         if not include_mango:
-            self.mango: Mango = None  # type: ignore
+            self.mango: Mango | MangoEnv = None  # type: ignore
             raise Warning("Mango not saved, this may cause problems when loading")
         with open(path, "wb") as f:
             pickle.dump(self, f)
@@ -56,6 +62,6 @@ class Agent:
             self.mango = mango
 
     @classmethod
-    def load_from(cls, path: str) -> Mango:
+    def load_from(cls, path: str):
         with open(path, "rb") as f:
             return pickle.load(f)
