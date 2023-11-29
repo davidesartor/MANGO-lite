@@ -3,7 +3,7 @@ from typing import Protocol, NamedTuple, Any
 import numpy as np
 import numpy.typing as npt
 import torch
-import spaces
+from . import spaces
 
 
 # this is not a good way to type this version
@@ -73,8 +73,13 @@ class DynamicPolicy(Protocol):
 
 
 class Environment(Protocol):
-    action_space: spaces.Discrete
-    observation_space: spaces.Space
+    @property
+    def action_space(self) -> spaces.Discrete:
+        ...
+
+    @property
+    def observation_space(self) -> spaces.Space:
+        ...
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None

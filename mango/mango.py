@@ -4,12 +4,12 @@ from typing import Any, Optional, Sequence
 import pickle
 import numpy as np
 
-import spaces
-from protocols import Environment, AbstractActions, DynamicPolicy
-from protocols import ObsType, ActType, OptionType, Transition
-from policies.experiencereplay import ExperienceReplay
-from policies.policymapper import PolicyMapper
-import utils
+from . import spaces
+from . import utils
+from mango.protocols import Environment, AbstractActions, DynamicPolicy
+from mango.protocols import ObsType, ActType, OptionType, Transition
+from mango.policies.experiencereplay import ExperienceReplay
+from mango.policies.policymapper import PolicyMapper
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -51,8 +51,8 @@ class MangoEnv(Environment):
 
 @dataclass(eq=False, slots=True, repr=False)
 class MangoLayer(Environment):
-    abs_actions: AbstractActions
     lower_layer: MangoLayer | MangoEnv
+    abs_actions: AbstractActions
     dynamic_policy_cls: InitVar[type[DynamicPolicy]]
     dynamic_policy_params: InitVar[dict[str, Any]]
     verbose_indent: Optional[int] = None
@@ -179,20 +179,12 @@ class Mango(Environment):
         return spaces.Discrete(sum(int(layer.action_space.n) for layer in self.layers))
 
     @property
-<<<<<<< HEAD
-<<<<<<< HEAD
     def observation_space(self) -> spaces.Space:
         return self.environment.observation_space
 
     @property
     def layers(self) -> tuple[MangoEnv | MangoLayer, ...]:
         return (self.environment, *self.abstract_layers)
-=======
-=======
->>>>>>> cb6a561 (Merge commit '69cf7733b0d0aad9a6bd97d4fb49f77626b6fc83')
-    def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(sum(int(layer.action_space.n) for layer in self.layers))
->>>>>>> cb6a561 (Merge commit '69cf7733b0d0aad9a6bd97d4fb49f77626b6fc83')
 
     def relative_option_idx(self, option: OptionType) -> tuple[int, ActType]:
         if isinstance(option, tuple):

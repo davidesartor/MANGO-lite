@@ -1,5 +1,5 @@
 import gymnasium as gym
-from mango.protocols import ActType
+from .protocols import ActType
 
 
 # eventually mango should  probably be changed to use gym.spaces directly

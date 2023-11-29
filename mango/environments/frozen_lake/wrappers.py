@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Protocol
 import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
@@ -30,8 +30,14 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         return rendered
 
 
-class ReInitOnReset(gym.Wrapper):
-    def __init__(self, env: gym.Env, **init_kwargs):
+class FrozenLakeWrapper(Protocol):
+    @property
+    def unwrapped(self) -> FrozenLakeEnv:
+        return super().unwrapped  # type: ignore
+
+
+class ReInitOnReset(FrozenLakeWrapper, gym.Wrapper):
+    def __init__(self, env: FrozenLakeEnv, **init_kwargs):
         super().__init__(env)
         self.init_kwargs = init_kwargs
 
@@ -42,11 +48,11 @@ class ReInitOnReset(gym.Wrapper):
         return self.env.reset(seed=seed, options=options)
 
 
-class CoordinateObservation(gym.ObservationWrapper):
-    def __init__(self, env: FrozenLakeEnv, one_hot: bool = False):
-        super().__init__(env)
+class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
+    def __init__(self, env: FrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+        super().__init__(env)  # type: ignore
         self.one_hot = one_hot
-        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         self.observation_space = (
             gym.spaces.Box(low=0, high=max(map_shape), shape=(2,), dtype=np.uint8)
             if not one_hot
@@ -66,13 +72,13 @@ class CoordinateObservation(gym.ObservationWrapper):
         return int(y * self.unwrapped.ncol + x)  # type: ignore
 
 
-class TensorObservation(gym.ObservationWrapper):
+class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     char2int = {b"S": 1, b"F": 1, b"H": 2, b"G": 3}.get
 
-    def __init__(self, env: FrozenLakeEnv, one_hot: bool = False):
-        super().__init__(env)
+    def __init__(self, env: FrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+        super().__init__(env)  # type: ignore
         self.one_hot = one_hot
-        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         self.observation_space = (
             gym.spaces.Box(low=0, high=1, shape=(4, *map_shape), dtype=np.uint8)
             if one_hot
@@ -80,8 +86,8 @@ class TensorObservation(gym.ObservationWrapper):
         )
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
-        map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]  # type: ignore
-        row, col = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
+        map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]
+        row, col = self.unwrapped.s // self.unwrapped.ncol, self.unwrapped.s % self.unwrapped.ncol
         map[row][col] = 0
         map = np.array(map, dtype=np.uint8)
         if not self.one_hot:
@@ -95,17 +101,17 @@ class TensorObservation(gym.ObservationWrapper):
     def observation_inv(self, obs: npt.NDArray[np.uint8]) -> int:
         agent_idx = np.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
         y, x = np.unravel_index(agent_idx, obs.shape[1:])
-        return int(y * self.unwrapped.ncol + x)  # type: ignore
+        return int(y * self.unwrapped.ncol + x)
 
 
-class RenderObservation(gym.ObservationWrapper):
-    def __init__(self, env: gym.Env):
-        super().__init__(env)
-        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)  # type: ignore
+class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
+    def __init__(self, env: FrozenLakeEnv | FrozenLakeWrapper):
+        super().__init__(env)  # type: ignore
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(3, *map_shape), dtype=np.uint8
         )
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
-        render = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore
+        render: npt.NDArray[np.uint8] = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore
         return render
