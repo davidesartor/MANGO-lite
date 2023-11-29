@@ -1,11 +1,10 @@
 from __future__ import annotations
 from dataclasses import InitVar, dataclass, field
 from typing import Any, Optional, Sequence
-import pickle
 import numpy as np
 
 from . import spaces
-from . import utils
+from .utils.repr import torch_style_repr
 from .protocols import Environment, AbstractActions, DynamicPolicy
 from .protocols import ObsType, ActType, OptionType, Transition
 from .policies.experiencereplay import ExperienceReplay
@@ -44,9 +43,7 @@ class MangoEnv(Environment):
         return self.obs, info
 
     def __repr__(self) -> str:
-        return utils.repr.torch_style_repr(
-            self.__class__.__name__, dict(environment=str(self.environment))
-        )
+        return torch_style_repr(self.__class__.__name__, dict(environment=str(self.environment)))
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -73,9 +70,7 @@ class MangoLayer(Environment):
             **dynamic_policy_params,
         )
         self.replay_memory = ExperienceReplay(abs_actions=self.abs_actions)
-        self.intrinsic_reward_log = tuple([] for _ in self.action_space)
-        self.train_loss_log = tuple([] for _ in self.action_space)
-        self.episode_length_log = []
+        self.reset(options={"replay_memory": True, "logs": True})
 
     @property
     def action_space(self) -> spaces.Discrete:
@@ -119,6 +114,13 @@ class MangoLayer(Environment):
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
+        if options is not None:
+            if options.get("replay_memory", False):
+                self.replay_memory.reset()
+            if options.get("logs", False):
+                self.intrinsic_reward_log = tuple([] for _ in self.action_space)
+                self.train_loss_log = tuple([] for _ in self.action_space)
+                self.episode_length_log = []
         return self.lower_layer.reset(seed=seed, options=options)
 
     def train(self, action: Optional[ActType | Sequence[ActType]] = None):
@@ -135,7 +137,7 @@ class MangoLayer(Environment):
                     self.train_loss_log[action].append(loss)
 
     def __repr__(self) -> str:
-        return utils.repr.torch_style_repr(
+        return torch_style_repr(
             self.__class__.__name__,
             dict(abs_actions=str(self.abs_actions), policy=str(self.policy)),
         )
@@ -258,20 +260,4 @@ class Mango(Environment):
 
     def __repr__(self) -> str:
         params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
-        return utils.repr.torch_style_repr(self.__class__.__name__, params)
-
-    def save_to(self, path: str, include_env: bool = True):
-        self.reset()
-        env = self.environment
-        if not include_env:
-            self.environment: MangoEnv = None  # type: ignore
-            raise Warning("Environment not saved, this may cause problems when loading")
-        with open(path, "wb") as f:
-            pickle.dump(self, f)
-        if not include_env:
-            self.environment = env
-
-    @classmethod
-    def load_from(cls, path: str):
-        with open(path, "rb") as f:
-            return pickle.load(f)
+        return torch_style_repr(self.__class__.__name__, params)

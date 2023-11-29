@@ -1,3 +1,3 @@
-from . import repr, plotting
+from . import plotting, repr
 
-__all__ = ["repr", "plotting"]
+__all__ = ["plotting", "repr"]

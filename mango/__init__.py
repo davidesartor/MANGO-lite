@@ -1,4 +1,14 @@
-from . import actions, agents, environments, policies, neuralnetworks, utils
+from . import actions, environments, policies, neuralnetworks, utils, saving
 from .mango import Mango
+from .agents import Agent
 
-__all__ = ["Mango", "actions", "agents", "environments", "policies", "neuralnetworks", "utils"]
+__all__ = [
+    "Mango",
+    "Agent",
+    "actions",
+    "environments",
+    "policies",
+    "neuralnetworks",
+    "utils",
+    "saving",
+]
