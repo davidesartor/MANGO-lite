@@ -9,7 +9,7 @@ from mango.neuralnetworks.networks import ConvEncoder
 
 
 @dataclass(eq=False, slots=True, repr=True)
-class DQnetPolicy(Policy):
+class DQNetPolicy(Policy):
     action_space: spaces.Discrete
 
     net_params: InitVar[dict[str, Any]] = dict()
@@ -41,22 +41,22 @@ class DQnetPolicy(Policy):
         with torch.no_grad():
             action_log_prob = self.qvalues(obs)
             if randomness == 0.0:
-                return ActType(int(action_log_prob.argmax().item()))
+                return int(action_log_prob.argmax().item())
             elif randomness == 1.0:
-                return ActType(int(self.action_space.sample()))
+                return self.action_space.sample()
             else:
                 temperture = -np.log2(1 - randomness) / 2
                 probs = torch.softmax(action_log_prob / temperture, dim=-1)
-                return ActType(int(torch.multinomial(probs, 1).item()))
+                return int(torch.multinomial(probs, 1).item())
 
-    def qvalues(self, obs: ObsType, batched=False) -> torch.Tensor:
+    def qvalues(self, obs: ObsType | torch.Tensor, batched=False) -> torch.Tensor:
         tensor_obs = torch.as_tensor(obs, dtype=torch.get_default_dtype(), device=self.device)
         if not batched:
             tensor_obs = tensor_obs.unsqueeze(0)
         if self.ema_model is not None:
             qvals = self.ema_model(tensor_obs)
         else:
-            qvals = self.net(tensor_obs.unsqueeze(0))
+            qvals = self.net(tensor_obs)
             self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
         if not batched:
             qvals = qvals.squeeze(0)

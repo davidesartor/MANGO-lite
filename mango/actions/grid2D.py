@@ -66,11 +66,13 @@ class SubGridMovement(AbstractActions):
             return obs
 
         if self.invalid_channel is None:
-            padded_obs = np.zeros((obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2))
+            padded_shape = (obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2)
+            padded_obs = np.zeros_like(obs, shape=padded_shape)
             padded_obs[:-1, 1:-1, 1:-1] = obs
             padded_obs[-1, 1:-1, 1:-1] = 1
         else:
-            padded_obs = np.zeros((obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2))
+            padded_shape = (obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2)
+            padded_obs = np.zeros_like(obs, shape=padded_shape)
             padded_obs[self.invalid_channel] = 1
             padded_obs[:, 1:-1, 1:-1] = obs
 

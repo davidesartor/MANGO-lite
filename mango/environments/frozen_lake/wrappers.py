@@ -4,7 +4,6 @@ import numpy as np
 import numpy.typing as npt
 from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv
 
-
 from .utils import generate_map
 from mango import spaces
 
@@ -23,21 +22,21 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         super().__init__(render_mode, desc, map_name, is_slippery)
         self.action_space = spaces.Discrete(4)
 
-    def render(self):
+    def render(self) -> npt.NDArray[np.uint8]:
         rendered = super().render()
         if self.render_mode == "rgb_array":
             rendered = rendered[: self.cell_size[0] * self.nrow, : self.cell_size[1] * self.ncol]  # type: ignore
-        return rendered
+        return rendered  # type: ignore
 
 
-class FrozenLakeWrapper(Protocol):
+class FrozenLakeWrapper(gym.Wrapper):
     @property
-    def unwrapped(self) -> FrozenLakeEnv:
+    def unwrapped(self) -> CustomFrozenLakeEnv:
         return super().unwrapped  # type: ignore
 
 
-class ReInitOnReset(FrozenLakeWrapper, gym.Wrapper):
-    def __init__(self, env: FrozenLakeEnv, **init_kwargs):
+class ReInitOnReset(FrozenLakeWrapper):
+    def __init__(self, env: CustomFrozenLakeEnv, **init_kwargs):
         super().__init__(env)
         self.init_kwargs = init_kwargs
 
@@ -49,14 +48,14 @@ class ReInitOnReset(FrozenLakeWrapper, gym.Wrapper):
 
 
 class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
-    def __init__(self, env: FrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         self.observation_space = (
-            gym.spaces.Box(low=0, high=max(map_shape), shape=(2,), dtype=np.uint8)
+            spaces.Box(low=0, high=max(map_shape), shape=(2,), dtype=np.uint8)
             if not one_hot
-            else gym.spaces.Box(low=0, high=1, shape=(1, *map_shape), dtype=np.uint8)
+            else spaces.Box(low=0, high=1, shape=(1, *map_shape), dtype=np.uint8)
         )
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
@@ -75,14 +74,14 @@ class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
 class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     char2int = {b"S": 1, b"F": 1, b"H": 2, b"G": 3}.get
 
-    def __init__(self, env: FrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         self.observation_space = (
-            gym.spaces.Box(low=0, high=1, shape=(4, *map_shape), dtype=np.uint8)
+            spaces.Box(low=0, high=1, shape=(4, *map_shape), dtype=np.uint8)
             if one_hot
-            else gym.spaces.Box(low=0, high=3, shape=(1, *map_shape), dtype=np.uint8)
+            else spaces.Box(low=0, high=3, shape=(1, *map_shape), dtype=np.uint8)
         )
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
@@ -105,12 +104,10 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
 
 
 class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
-    def __init__(self, env: FrozenLakeEnv | FrozenLakeWrapper):
+    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper):
         super().__init__(env)  # type: ignore
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
-        self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(3, *map_shape), dtype=np.uint8
-        )
+        self.observation_space = spaces.Box(low=0, high=255, shape=(3, *map_shape), dtype=np.uint8)
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
         render: npt.NDArray[np.uint8] = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore

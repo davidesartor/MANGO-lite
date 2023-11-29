@@ -6,10 +6,10 @@ import numpy as np
 
 from . import spaces
 from . import utils
-from mango.protocols import Environment, AbstractActions, DynamicPolicy
-from mango.protocols import ObsType, ActType, OptionType, Transition
-from mango.policies.experiencereplay import ExperienceReplay
-from mango.policies.policymapper import PolicyMapper
+from .protocols import Environment, AbstractActions, DynamicPolicy
+from .protocols import ObsType, ActType, OptionType, Transition
+from .policies.experiencereplay import ExperienceReplay
+from .policies.policymapper import PolicyMapper
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -44,7 +44,7 @@ class MangoEnv(Environment):
         return self.obs, info
 
     def __repr__(self) -> str:
-        return utils.torch_style_repr(
+        return utils.repr.torch_style_repr(
             self.__class__.__name__, dict(environment=str(self.environment))
         )
 
@@ -135,7 +135,7 @@ class MangoLayer(Environment):
                     self.train_loss_log[action].append(loss)
 
     def __repr__(self) -> str:
-        return utils.torch_style_repr(
+        return utils.repr.torch_style_repr(
             self.__class__.__name__,
             dict(abs_actions=str(self.abs_actions), policy=str(self.policy)),
         )
@@ -192,7 +192,7 @@ class Mango(Environment):
         offsets = np.cumsum([layer.action_space.n for layer in self.layers])
         offsets = [0] + list(offsets)
         layer = int(np.searchsorted(offsets, option + 1)) - 1
-        action = ActType(option - offsets[layer])
+        action = option - offsets[layer]
         return layer, action
 
     def set_randomness(self, randomness: float, layer: Optional[int] = None):
@@ -243,7 +243,7 @@ class Mango(Environment):
         obs, info = self.reset()
         accumulated_reward, term, trunc, i = 0.0, False, False, 0
         for i in range(episode_length):
-            action = ActType(int(self.layers[layer].action_space.sample()))
+            action = self.layers[layer].action_space.sample()
             obs, reward, term, trunc, info = self.step((layer, action))
             accumulated_reward += reward
             if term or trunc:
@@ -258,7 +258,7 @@ class Mango(Environment):
 
     def __repr__(self) -> str:
         params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
-        return utils.torch_style_repr(self.__class__.__name__, params)
+        return utils.repr.torch_style_repr(self.__class__.__name__, params)
 
     def save_to(self, path: str, include_env: bool = True):
         self.reset()

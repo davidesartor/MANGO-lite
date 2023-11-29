@@ -8,8 +8,8 @@ from . import spaces
 
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
-ObsType = torch.Tensor | npt.NDArray
-ActType = np.integer
+ObsType = npt.NDArray[np.floating[Any] | np.integer[Any]]
+ActType = np.integer[Any] | int
 OptionType = ActType | tuple[int, ActType]
 
 

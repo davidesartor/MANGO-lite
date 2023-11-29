@@ -7,7 +7,7 @@ import warnings
 
 @numba.njit
 def sample_position_in(
-    region: npt.NDArray[np.bool_], avoid: Sequence[tuple[int, int]] | None = None
+    region: npt.NDArray[np.bool_], avoid: Optional[Sequence[tuple[int, int]]] = None
 ) -> tuple[int, int]:
     if avoid is not None:
         for r, c in avoid:
@@ -39,11 +39,11 @@ def reachable_from(
 
 @numba.njit
 def random_board(
-    shape: tuple[int, int], p: float, contains: list[tuple[int, int]] | None = None
+    shape: tuple[int, int], p: float, contains: Optional[Sequence[tuple[int, int]]] = None
 ) -> npt.NDArray[np.bool_]:
     connected = np.zeros(shape, dtype=np.bool_)
     need_to_connect = np.zeros(shape, dtype=np.bool_)
-    if contains:
+    if contains is not None and contains:
         start = contains[0]
         for c in contains:
             need_to_connect[c] = True
@@ -61,6 +61,15 @@ def random_board(
         connected |= reachable_from(connected, frozen + connected)
         need_to_connect &= ~connected
     return connected
+
+
+def one_hot_encode(
+    coord: Sequence[tuple[int, int]], grid_shape: tuple[int, int]
+) -> npt.NDArray[np.bool_]:
+    grid = np.zeros(grid_shape, dtype=np.bool_)
+    for r, c in coord:
+        grid[r, c] = True
+    return grid
 
 
 def generate_map(
@@ -90,7 +99,7 @@ def generate_map(
         else:
             connected = random_board(shape, p, contains=None)
             start_pos = [sample_position_in(connected)]
-            goal_pos = [sample_position_in(connected)]
+            goal_pos = [sample_position_in(connected, avoid=start_pos)]
 
     desc = np.empty(shape, dtype="U1")
     desc[connected] = b"F"

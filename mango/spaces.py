@@ -1,5 +1,5 @@
 import gymnasium as gym
-from .protocols import ActType
+import numpy as np
 
 
 # eventually mango should  probably be changed to use gym.spaces directly
@@ -8,7 +8,7 @@ from .protocols import ActType
 
 class Discrete(gym.spaces.Discrete):
     def __iter__(self):
-        return iter([ActType(elem) for elem in range(self.n)])
+        return iter(np.arange(self.n))
 
 
 class Space(gym.spaces.Space):
