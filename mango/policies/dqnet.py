@@ -40,9 +40,9 @@ class DQNetPolicy(Policy):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         with torch.no_grad():
             action_log_prob = self.qvalues(obs)
-            if randomness == 0.0:
+            if randomness <= 0.0 + 1e-08:
                 return int(action_log_prob.argmax().item())
-            elif randomness == 1.0:
+            elif randomness >= 1.0 - 1e-08:
                 return self.action_space.sample()
             else:
                 temperture = -np.log2(1 - randomness) / 2
@@ -53,11 +53,7 @@ class DQNetPolicy(Policy):
         tensor_obs = torch.as_tensor(obs, dtype=torch.get_default_dtype(), device=self.device)
         if not batched:
             tensor_obs = tensor_obs.unsqueeze(0)
-        if self.ema_model is not None:
-            qvals = self.ema_model(tensor_obs)
-        else:
-            qvals = self.net(tensor_obs)
-            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
+        qvals = self.net(tensor_obs)
         if not batched:
             qvals = qvals.squeeze(0)
         return qvals
@@ -71,14 +67,17 @@ class DQNetPolicy(Policy):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        self.update_target_net()
-        if self.ema_model is not None:
-            self.ema_model.update_parameters(self.net)
+        self.update_models()
         return loss.item()
 
-    def update_target_net(self):
+    def update_models(self):
+        # soft update target network
         for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+        # stochastic weight averaging of qnet
+        if self.ema_model is None:
+            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
+        self.ema_model.update_parameters(self.net)
 
     def compute_loss(self, transitions: TensorTransitionLists) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
@@ -89,8 +88,8 @@ class DQNetPolicy(Policy):
         terminated = transitions.terminated.to(dtype=torch.bool, device=self.device)
         truncated = transitions.truncated.to(dtype=torch.bool, device=self.device)
 
-        terminated_option = np.array([i["mango:terminated"] for i in transitions.info])
-        truncated_option = np.array([i["mango:truncated"] for i in transitions.info])
+        terminated_option = np.array([i.get("mango:terminated", False) for i in transitions.info])
+        truncated_option = np.array([i.get("mango:truncated", False) for i in transitions.info])
         terminated_option = torch.as_tensor(terminated_option, dtype=torch.bool, device=self.device)
         truncated_option = torch.as_tensor(truncated_option, dtype=torch.bool, device=self.device)
 

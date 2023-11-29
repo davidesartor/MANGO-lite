@@ -23,6 +23,7 @@ class Agent:
         start_obs = self.environment.obs
         action = self.policy.get_action(start_obs, randomness)
         next_obs, reward, term, trunc, info = self.environment.step(action)
+        info = {k: v for k, v in info.items() if not k.startswith("mango")}
         self.replay_memory.push(Transition(start_obs, action, next_obs, reward, term, trunc, info))
         self.reward_log.append(reward)
         return self.environment.obs, reward, term, trunc, info
