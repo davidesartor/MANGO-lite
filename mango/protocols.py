@@ -81,10 +81,6 @@ class Environment(Protocol):
     def observation_space(self) -> spaces.Space:
         ...
 
-    @property
-    def obs(self) -> ObsType:
-        ...
-
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:

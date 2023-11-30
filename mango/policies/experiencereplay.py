@@ -11,6 +11,7 @@ class ReplayMemory:
     batch_size: int = 128
     capacity: int = 128 * 128
     memory: list[Transition] = field(init=False, default_factory=list)
+    last: int = field(init=False, default=0)
 
     def size(self) -> int:
         return len(self.memory)
@@ -22,7 +23,8 @@ class ReplayMemory:
         if len(self.memory) < self.capacity:
             self.memory.append(transition)
         else:
-            self.memory[np.random.randint(self.capacity)] = transition
+            self.memory[self.last] = transition
+            self.last = (self.last + 1) % self.capacity
 
     def extend(self, items: Sequence[Transition]) -> None:
         for item in items:
@@ -67,17 +69,17 @@ class ExperienceReplay:
         return self.size(comand) >= (quantity or self.batch_size)
 
     def push(self, comand: ActType, transition: Transition) -> None:
-        for comand, memory in self.memories.items():
+        for comand_considered, memory in self.memories.items():
             processed_transition = transition._replace(
-                start_obs=self.abs_actions.mask(comand, transition.start_obs),
-                next_obs=self.abs_actions.mask(comand, transition.next_obs),
+                start_obs=self.abs_actions.mask(comand_considered, transition.start_obs),
+                next_obs=self.abs_actions.mask(comand_considered, transition.next_obs),
                 reward=self.abs_actions.compatibility(
-                    comand, transition.start_obs, transition.next_obs
+                    comand_considered, transition.start_obs, transition.next_obs
                 ),
             )
             if len(memory) < self.capacity:
                 memory.append(processed_transition)
-            else:
+            elif comand_considered == comand or random.random() < 1 / len(self.memories):
                 memory[np.random.randint(self.capacity)] = processed_transition
 
     def extend(self, comand: ActType, items: Sequence[Transition]) -> None:

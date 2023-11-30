@@ -1,10 +1,12 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def smooth(signal, window=0.05):
-    signal = [s for s in signal if s is not None]
+    signal = np.array([s for s in signal if s is not None])
     window = max(3, int(len(signal) * window))
-    return [sum(signal[i : i + window]) / window for i in range(len(signal) - window)]
+    window_array = np.ones(window) / window
+    return np.convolve(signal, window_array, mode="valid")
 
 
 def plot_loss_reward(mango, actions, reward_lims=None, layers=None):

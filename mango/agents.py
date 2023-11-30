@@ -19,14 +19,12 @@ class Agent:
     def __post_init__(self, policy_cls: type[Policy], policy_params: dict[str, Any]):
         self.policy = policy_cls.make(action_space=self.environment.action_space, **policy_params)
 
-    def step(self, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
-        start_obs = self.environment.obs
-        action = self.policy.get_action(start_obs, randomness)
+    def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
+        action = self.policy.get_action(obs, randomness)
         next_obs, reward, term, trunc, info = self.environment.step(action)
         info = {k: v for k, v in info.items() if not k.startswith("mango")}
-        self.replay_memory.push(Transition(start_obs, action, next_obs, reward, term, trunc, info))
-        self.reward_log.append(reward)
-        return self.environment.obs, reward, term, trunc, info
+        self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
+        return next_obs, reward, term, trunc, info
 
     def train(self) -> float | None:
         if not self.replay_memory.can_sample():
@@ -42,10 +40,11 @@ class Agent:
         obs, info = self.environment.reset()
         accumulated_reward, term, trunc = 0.0, False, False
         for _ in range(episode_length):
-            obs, reward, term, trunc, info = self.step(randomness=randomness)
+            obs, reward, term, trunc, info = self.step(obs, randomness=randomness)
             accumulated_reward += reward
             if term or trunc:
                 break
+        self.reward_log.append(accumulated_reward)
         return obs, accumulated_reward, term, trunc, info
 
     def reset(
