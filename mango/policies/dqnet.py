@@ -53,11 +53,8 @@ class DQNetPolicy(Policy):
         tensor_obs = torch.as_tensor(obs, dtype=torch.get_default_dtype(), device=self.device)
         if not batched:
             tensor_obs = tensor_obs.unsqueeze(0)
-        if self.ema_model is None:
-            qvals = self.net(tensor_obs)
-            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
-        else:
-            qvals = self.ema_model(tensor_obs)
+        self.net.eval()
+        qvals = self.net(tensor_obs)
         if not batched:
             qvals = qvals.squeeze(0)
         return qvals
@@ -79,8 +76,9 @@ class DQNetPolicy(Policy):
         for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         # stochastic weight averaging of qnet
-        if self.ema_model is not None:
-            self.ema_model.update_parameters(self.net)
+        if self.ema_model is None:
+            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net)
+        self.ema_model.update_parameters(self.net)
 
     def compute_loss(self, transitions: TensorTransitionLists) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components

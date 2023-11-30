@@ -116,3 +116,11 @@ def generate_map(
     if mirror:
         desc = [row[::-1] + row[shape[0] % 2 :] for row in desc[::-1] + desc[shape[1] % 2 :]]
     return desc
+
+
+def path_to_save_dir(env_params):
+    if (map_name := env_params["map_name"]) == "RANDOM":
+        (row, cols), p = env_params["shape"], env_params["p"]
+        return f"trained_models/frozen_lake/{row}x{cols}_RANDOM_p={int(p*100)}%/"
+    else:
+        return f"trained_models/frozen_lake/{map_name}_PREDEFINED/"

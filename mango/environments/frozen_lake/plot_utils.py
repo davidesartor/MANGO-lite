@@ -136,7 +136,7 @@ def plot_all_qvals(mango: Mango, trajectory: list[ObsType] | list[int] = [], siz
 def plot_all_qvals_agent(agent: Agent, trajectory: list[ObsType] | list[int] = [], size=3):
     # TODO: fix type hints, this only works for specific Mango instances
     env: FrozenLakeWrapper = agent.environment.environment  # type: ignore
-    plt.figure(figsize=((size + 1) + size, size))
+    plt.figure(figsize=((size + 2) + size, size))
 
     plt.subplot(1, 2, 1)
     plt.title(f"Environment")
@@ -147,7 +147,7 @@ def plot_all_qvals_agent(agent: Agent, trajectory: list[ObsType] | list[int] = [
 
     plt.subplot(1, 2, 2)
     plt.title(f"Qvals")
-    all_obs_list = all_observations(env, lambda obs: layer.abs_actions.mask(action, obs))  # type: ignore
+    all_obs_list = all_observations(env)  # type: ignore
     plot_qval_heatmap(agent.policy, all_obs_list, env)  # type: ignore
     plt.xticks([])
     plt.yticks([])
