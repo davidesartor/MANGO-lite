@@ -32,7 +32,7 @@ def plot_loss_reward(mango, actions, reward_lims=None, layers=None):
         plt.plot(smooth(layer.episode_length_log))
 
 
-def plot_agent_loss_reward(agent):
+def plot_agent_loss_reward(agent, reward_lims=None):
     plt.figure(figsize=(8, 3))
     plt.subplot(1, 2, 1)
     plt.title(f"loss")
@@ -41,3 +41,4 @@ def plot_agent_loss_reward(agent):
     plt.subplot(1, 2, 2)
     plt.title(f"reward")
     plt.plot(smooth(agent.reward_log))
+    plt.ylim(reward_lims)
