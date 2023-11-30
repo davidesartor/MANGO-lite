@@ -6,6 +6,7 @@ from .wrappers import FrozenLakeWrapper
 from . import Actions
 
 from mango.mango import Mango
+from mango.agents import Agent
 from mango.protocols import ObsType
 from mango.policies import DQNetPolicy
 
@@ -130,3 +131,23 @@ def plot_all_qvals(mango: Mango, trajectory: list[ObsType] | list[int] = [], siz
             plot_qval_heatmap(policy, all_obs_list, env)
             plt.xticks([])
             plt.yticks([])
+
+
+def plot_all_qvals_agent(agent: Agent, trajectory: list[ObsType] | list[int] = [], size=3):
+    # TODO: fix type hints, this only works for specific Mango instances
+    env: FrozenLakeWrapper = agent.environment.environment  # type: ignore
+    plt.figure(figsize=((size + 1) + size, size))
+
+    plt.subplot(1, 2, 1)
+    plt.title(f"Environment")
+    plt.imshow(env.unwrapped.render())
+    plot_trajectory(trajectory, env)
+    plt.xticks([])
+    plt.yticks([])
+
+    plt.subplot(1, 2, 2)
+    plt.title(f"Qvals")
+    all_obs_list = all_observations(env, lambda obs: layer.abs_actions.mask(action, obs))  # type: ignore
+    plot_qval_heatmap(agent.policy, all_obs_list, env)  # type: ignore
+    plt.xticks([])
+    plt.yticks([])

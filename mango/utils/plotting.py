@@ -31,7 +31,7 @@ def plot_loss_reward(mango, actions, reward_lims=None, layers=None):
 
 
 def plot_agent_loss_reward(agent):
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(8, 3))
     plt.subplot(1, 2, 1)
     plt.title(f"loss")
     plt.semilogy(smooth(agent.train_loss_log))

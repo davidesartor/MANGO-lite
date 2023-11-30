@@ -3,7 +3,7 @@ from .mango import Mango
 from .agents import Agent
 
 
-def save_to(
+def save_to_file(
     path: str,
     obj: Mango | Agent,
     include_env: bool = True,
@@ -20,6 +20,6 @@ def save_to(
         obj.environment = env  # type: ignore
 
 
-def load_from(path: str):
+def load_from_file(path: str):
     with open(path, "rb") as f:
         return pickle.load(f)

@@ -105,7 +105,7 @@ class MangoLayer(Environment):
                 break
 
         info = {**info, "mango:trajectory": trajectory}
-        if info["mango:terminated"] or term or info["mango:truncated"] or trunc:
+        if info["mango:terminated"] or term:  # or info["mango:truncated"] or trunc:
             self.intrinsic_reward_log[action].append(
                 self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
             )

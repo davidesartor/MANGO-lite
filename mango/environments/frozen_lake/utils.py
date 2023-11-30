@@ -85,6 +85,8 @@ def generate_map(
 
     start_pos = [(r % shape[0], c % shape[1]) for r, c in start_pos]
     goal_pos = [(r % shape[0], c % shape[1]) for r, c in goal_pos]
+    if len(goal_pos) > 1:
+        goal_pos = [goal_pos[np.random.randint(len(goal_pos))]]
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

@@ -15,7 +15,7 @@ class DQNetPolicy(Policy):
     net_params: InitVar[dict[str, Any]] = dict()
     lr: InitVar[float] = 1e-3
     gamma: float = field(default=0.9, repr=False)
-    tau: float = field(default=0.05, repr=False)
+    tau: float = field(default=0.01, repr=False)
 
     net: torch.nn.Module = field(init=False, repr=False)
     target_net: torch.nn.Module = field(init=False, repr=False)
@@ -26,10 +26,10 @@ class DQNetPolicy(Policy):
     def __post_init__(self, net_params, lr):
         self.net = ConvEncoder(
             in_channels=None, out_features=int(self.action_space.n), **net_params
-        )
+        ).train()
         self.target_net = ConvEncoder(
             in_channels=None, out_features=int(self.action_space.n), **net_params
-        )
+        ).train()
         self.optimizer = torch.optim.RAdam(self.net.parameters(recurse=True), lr=lr)
         self.device = next(self.net.parameters()).device
 
@@ -53,7 +53,11 @@ class DQNetPolicy(Policy):
         tensor_obs = torch.as_tensor(obs, dtype=torch.get_default_dtype(), device=self.device)
         if not batched:
             tensor_obs = tensor_obs.unsqueeze(0)
-        qvals = self.net(tensor_obs)
+        if self.ema_model is None:
+            qvals = self.net(tensor_obs)
+            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
+        else:
+            qvals = self.ema_model(tensor_obs)
         if not batched:
             qvals = qvals.squeeze(0)
         return qvals
@@ -75,9 +79,8 @@ class DQNetPolicy(Policy):
         for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         # stochastic weight averaging of qnet
-        if self.ema_model is None:
-            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net).eval()
-        self.ema_model.update_parameters(self.net)
+        if self.ema_model is not None:
+            self.ema_model.update_parameters(self.net)
 
     def compute_loss(self, transitions: TensorTransitionLists) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
@@ -97,7 +100,7 @@ class DQNetPolicy(Policy):
         qval_start = self.net(start_obs)
         qval_sampled_action = torch.gather(qval_start, 1, actions.unsqueeze(1)).squeeze(1)
         with torch.no_grad():
-            qval_next = self.qvalues(next_obs, batched=True)
+            qval_next = self.net(next_obs)
             best_next_action = qval_next.argmax(dim=1, keepdim=True)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
             best_qval_next[terminated_option] = 1.0

@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from .lazymodules import LazyConvNd, LazyBatchNormNd
 
-DEFAULT_ACTIVATION = torch.nn.CELU()
+DEFAULT_ACTIVATION = torch.nn.LeakyReLU()  # torch.nn.CELU()
 
 
 class Squeeze(nn.Module):
