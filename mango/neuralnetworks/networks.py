@@ -1,4 +1,5 @@
 from typing import Sequence
+import warnings
 import torch
 from . import basecells
 
@@ -102,33 +103,35 @@ class ConvEncoder(torch.nn.Sequential):
     ):
         super().__init__()
         factory_params = {"device": device, "dtype": dtype}
-        self.append(
-            ConvNet(
-                in_channels=in_channels,
-                out_channels=hidden_channels[-1],
-                kernel_size=kernel_size,
-                hidden_channels=hidden_channels[:-1],
-                activation=activation_conv,
-                out_activation=activation_conv,
-                batch_norm=batch_norm,
-                out_batch_norm=batch_norm,
-                residual_connections=residual_connections,
-                groups=groups,
-                bias=bias,
-                **factory_params,
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.append(
+                ConvNet(
+                    in_channels=in_channels,
+                    out_channels=hidden_channels[-1],
+                    kernel_size=kernel_size,
+                    hidden_channels=hidden_channels[:-1],
+                    activation=activation_conv,
+                    out_activation=activation_conv,
+                    batch_norm=batch_norm,
+                    out_batch_norm=batch_norm,
+                    residual_connections=residual_connections,
+                    groups=groups,
+                    bias=bias,
+                    **factory_params,
+                )
             )
-        )
-        self.append(torch.nn.Flatten(start_dim=1))
-        self.append(
-            LinearNet(
-                in_features=None,
-                out_features=out_features,
-                hidden_features=hidden_features,
-                activation=activation_linear,
-                out_activation=activation_out,
-                batch_norm=batch_norm,
-                out_batch_norm=out_batch_norm,
-                bias=bias,
-                **factory_params,
+            self.append(torch.nn.Flatten(start_dim=1))
+            self.append(
+                LinearNet(
+                    in_features=None,
+                    out_features=out_features,
+                    hidden_features=hidden_features,
+                    activation=activation_linear,
+                    out_activation=activation_out,
+                    batch_norm=batch_norm,
+                    out_batch_norm=out_batch_norm,
+                    bias=bias,
+                    **factory_params,
+                )
             )
-        )

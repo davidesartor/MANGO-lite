@@ -1,38 +1,16 @@
 from dataclasses import dataclass, field
-from typing import Optional, Sequence, NamedTuple, Any
+from typing import Optional, Sequence
 import random
 import numpy as np
 import torch
-
-from mango.actions.abstract_actions import AbstractActions
-from ..utils import ObsType, ActType
-
-
-class Transition(NamedTuple):
-    start_obs: ObsType
-    action: ActType
-    next_obs: ObsType
-    reward: float
-    terminated: bool
-    truncated: bool
-    info: dict[str, Any]
-
-
-class TensorTransitionLists(NamedTuple):
-    start_obs: torch.Tensor
-    action: torch.Tensor
-    next_obs: torch.Tensor
-    reward: torch.Tensor
-    terminated: torch.Tensor
-    truncated: torch.Tensor
-    info: list[dict[str, Any]]
+from mango.protocols import AbstractActions, ActType, TensorTransitionLists, Transition
 
 
 @dataclass(eq=False, slots=True, repr=True)
 class ReplayMemory:
-    batch_size: int = 256
-    capacity: int = 2**10
-    memory: list[Transition] = field(init=False)
+    batch_size: int = 128
+    capacity: int = 128 * 128
+    memory: list[Transition] = field(init=False, default_factory=list)
 
     def size(self) -> int:
         return len(self.memory)
@@ -68,16 +46,19 @@ class ReplayMemory:
             start_obs, action, next_obs, reward, terminated, truncated, info
         )
 
+    def reset(self) -> None:
+        self.memory = []
+
 
 @dataclass(eq=False, slots=True, repr=True)
 class ExperienceReplay:
     abs_actions: AbstractActions
-    batch_size: int = 256
-    capacity: int = 2**10
+    batch_size: int = 128
+    capacity: int = 128 * 128
     memories: dict[ActType, list[Transition]] = field(init=False)
 
     def __post_init__(self):
-        self.memories = {comand: [] for comand in self.abs_actions.action_space}
+        self.reset()
 
     def size(self, comand: ActType) -> int:
         return len(self.memories[comand])
@@ -120,3 +101,6 @@ class ExperienceReplay:
         return TensorTransitionLists(
             start_obs, action, next_obs, reward, terminated, truncated, info
         )
+
+    def reset(self) -> None:
+        self.memories = {comand: [] for comand in self.abs_actions.action_space}
