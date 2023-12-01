@@ -18,7 +18,7 @@ class Agent:
 
     def __post_init__(self, policy_cls: type[Policy], policy_params: dict[str, Any]):
         self.policy = policy_cls.make(action_space=self.environment.action_space, **policy_params)
-        self.replay_memory = ExperienceReplay(alpha=0.6)
+        self.replay_memory = ExperienceReplay(alpha=0.0)
 
     def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
         action = self.policy.get_action(obs, randomness)
