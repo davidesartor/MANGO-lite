@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Callable, Protocol, NamedTuple, Any, overload
+from typing import Protocol, NamedTuple, Any
 import numpy as np
 import numpy.typing as npt
 import torch

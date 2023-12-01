@@ -18,7 +18,7 @@ class Agent:
 
     def __post_init__(self, policy_cls: type[Policy], policy_params: dict[str, Any]):
         self.policy = policy_cls.make(action_space=self.environment.action_space, **policy_params)
-        self.replay_memory = ExperienceReplay(alpha=0.0)
+        self.replay_memory = ExperienceReplay()
 
     def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
         action = self.policy.get_action(obs, randomness)
@@ -28,9 +28,11 @@ class Agent:
         return next_obs, reward, term, trunc, info
 
     def train(self):
-        if self.replay_memory.can_sample():
-            train_info = self.policy.train(transitions=self.replay_memory.sample())
-            self.train_loss_log.append(train_info.loss)
+        if not self.replay_memory.can_sample():
+            return None
+        train_info = self.policy.train(transitions=self.replay_memory.sample())
+        self.replay_memory.update_priorities_last_sampled(train_info.td)
+        self.train_loss_log.append(train_info.loss)
 
     def explore(
         self, episode_length: int, randomness: float = 0.0

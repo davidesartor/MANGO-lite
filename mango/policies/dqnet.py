@@ -106,4 +106,4 @@ class DQNetPolicy(Policy):
             best_qval_next[truncated_option] = 1.0
             best_qval_next[terminated] = 0.0
 
-        return qval_sampled_action - rewards + self.gamma * best_qval_next
+        return qval_sampled_action - rewards - self.gamma * best_qval_next

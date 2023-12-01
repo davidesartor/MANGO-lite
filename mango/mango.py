@@ -99,7 +99,7 @@ class MangoLayer(Environment):
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
             self.replay_memory[action].push(
-                Transition(start_obs, low_action, next_obs, reward, term, trunc, info)
+                Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
             )
             trajectory += info["mango:trajectory"][1:]
             accumulated_reward += reward
@@ -136,8 +136,8 @@ class MangoLayer(Environment):
                     comand=action,
                     transitions=self.replay_memory[action].sample(),
                 )
-                self.train_loss_log[action].append(train_info.loss)
                 self.replay_memory[action].update_priorities_last_sampled(train_info.td)
+                self.train_loss_log[action].append(train_info.loss)
 
     def __repr__(self) -> str:
         return torch_style_repr(
