@@ -28,11 +28,10 @@ class Agent:
         return next_obs, reward, term, trunc, info
 
     def train(self):
-        if not self.replay_memory.can_sample():
-            return None
-        train_info = self.policy.train(transitions=self.replay_memory.sample())
-        self.replay_memory.update_priorities_last_sampled(train_info.td)
-        self.train_loss_log.append(train_info.loss)
+        if self.replay_memory.can_sample():
+            train_info = self.policy.train(transitions=self.replay_memory.sample())
+            self.replay_memory.update_priorities_last_sampled(train_info.td)
+            self.train_loss_log.append(train_info.loss)
 
     def explore(
         self, episode_length: int, randomness: float = 0.0
