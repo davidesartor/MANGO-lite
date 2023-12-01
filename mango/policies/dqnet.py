@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from mango import spaces
-from mango.protocols import ActType, ObsType, TensorTransitionLists, Policy
+from mango.protocols import ActType, ObsType, TensorTransitionLists, TrainInfo, Policy
 from mango.neuralnetworks.networks import ConvEncoder
 
 
@@ -59,17 +59,18 @@ class DQNetPolicy(Policy):
             qvals = qvals.squeeze(0)
         return qvals
 
-    def train(self, transitions: TensorTransitionLists) -> float | None:
+    def train(self, transitions: TensorTransitionLists) -> TrainInfo:
         if not transitions:
-            return None
+            raise ValueError("transitions list cannot be empty")
         self.net.train()
         self.target_net.train()
-        loss = self.compute_loss(transitions)
+        td = self.temporal_difference(transitions)
+        loss = torch.nn.functional.smooth_l1_loss(td, torch.zeros_like(td))
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
         self.update_models()
-        return loss.item()
+        return TrainInfo(loss=loss.item(), td=td.detach().cpu().numpy())
 
     def update_models(self):
         # soft update target network
@@ -80,7 +81,7 @@ class DQNetPolicy(Policy):
             self.ema_model = torch.optim.swa_utils.AveragedModel(self.net)
         self.ema_model.update_parameters(self.net)
 
-    def compute_loss(self, transitions: TensorTransitionLists) -> torch.Tensor:
+    def temporal_difference(self, transitions: TensorTransitionLists) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
         start_obs = transitions.start_obs.to(dtype=torch.get_default_dtype(), device=self.device)
         actions = transitions.action.to(dtype=torch.int64, device=self.device)
@@ -104,7 +105,5 @@ class DQNetPolicy(Policy):
             best_qval_next[terminated_option] = 1.0
             best_qval_next[truncated_option] = 1.0
             best_qval_next[terminated] = 0.0
-        loss = torch.nn.functional.smooth_l1_loss(
-            qval_sampled_action, rewards + self.gamma * best_qval_next
-        )
-        return loss
+
+        return qval_sampled_action - rewards + self.gamma * best_qval_next

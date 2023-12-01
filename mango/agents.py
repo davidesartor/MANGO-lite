@@ -1,6 +1,6 @@
 from dataclasses import InitVar, dataclass, field
 from typing import Any, Optional, Sequence
-from mango.policies.experiencereplay import ReplayMemory
+from mango.policies.experiencereplay import ExperienceReplay
 from mango.protocols import Environment, ObsType, Policy, Transition
 from mango.utils.repr import torch_style_repr
 
@@ -12,12 +12,13 @@ class Agent:
     policy_params: InitVar[dict[str, Any]]
 
     policy: Policy = field(init=False)
-    replay_memory: ReplayMemory = field(init=False, repr=False, default_factory=ReplayMemory)
+    replay_memory: ExperienceReplay = field(init=False, repr=False)
     train_loss_log: list[float] = field(init=False, repr=False, default_factory=list)
     reward_log: list[float] = field(init=False, repr=False, default_factory=list)
 
     def __post_init__(self, policy_cls: type[Policy], policy_params: dict[str, Any]):
         self.policy = policy_cls.make(action_space=self.environment.action_space, **policy_params)
+        self.replay_memory = ExperienceReplay(alpha=0.6)
 
     def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
         action = self.policy.get_action(obs, randomness)
@@ -26,13 +27,10 @@ class Agent:
         self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
         return next_obs, reward, term, trunc, info
 
-    def train(self) -> float | None:
-        if not self.replay_memory.can_sample():
-            return None
-        loss = self.policy.train(transitions=self.replay_memory.sample())
-        if loss is not None:
-            self.train_loss_log.append(loss)
-        return loss
+    def train(self):
+        if self.replay_memory.can_sample():
+            train_info = self.policy.train(transitions=self.replay_memory.sample())
+            self.train_loss_log.append(train_info.loss)
 
     def explore(
         self, episode_length: int, randomness: float = 0.0

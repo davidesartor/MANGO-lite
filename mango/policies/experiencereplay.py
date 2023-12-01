@@ -1,41 +1,85 @@
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
-import random
+from typing import Any, Callable, Optional
 import numpy as np
+import numpy.typing as npt
 import torch
 from mango.protocols import AbstractActions, ActType, TensorTransitionLists, Transition
 
 
 @dataclass(eq=False, slots=True, repr=True)
-class ReplayMemory:
-    batch_size: int = 128
-    capacity: int = 128 * 128
-    memory: list[Transition] = field(init=False, default_factory=list)
-    last: int = field(init=False, default=0)
+class CircularBuffer:
+    capacity: int = 1024
+    memory: npt.NDArray[Any] = field(init=False)
+    last_in: int = field(init=False, default=-1)
+    size: int = field(init=False, default=0)
 
-    def size(self) -> int:
-        return len(self.memory)
+    def __post_init__(self):
+        self.memory = np.zeros(self.capacity, dtype=object)
+
+    def push(self, item: Any) -> int:
+        self.last_in = (self.last_in + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
+        self.memory[self.last_in] = item
+        return self.last_in
+
+    def __getitem__(self, index: int) -> Any:
+        return self.memory[index]
+
+
+@dataclass(eq=False, slots=True, repr=True)
+class TransitionTransform:
+    abstract_actions: AbstractActions
+    comand: ActType
+
+    def __call__(self, transition: Transition) -> Transition:
+        return transition._replace(
+            start_obs=self.abstract_actions.mask(self.comand, transition.start_obs),
+            next_obs=self.abstract_actions.mask(self.comand, transition.next_obs),
+            reward=self.abstract_actions.compatibility(
+                self.comand, transition.start_obs, transition.next_obs
+            ),
+        )
+
+
+@dataclass(eq=False, slots=True, repr=True)
+class ExperienceReplay:
+    batch_size: int = 32
+    capacity: int = 1024
+    alpha: float = 0.0
+    transform: Optional[Callable[[Transition], Transition]] = None
+    memory: CircularBuffer = field(init=False)
+    priorities: npt.NDArray[np.floating] = field(init=False)
+    last_sampled: npt.NDArray[np.int64] = field(init=False)
+
+    def __post_init__(self):
+        self.reset()
+
+    def reset(self) -> None:
+        self.memory = CircularBuffer(capacity=self.capacity)
+        self.priorities = np.zeros(self.capacity, dtype=np.floating)
 
     def can_sample(self, quantity: Optional[int] = None) -> bool:
-        return self.size() >= (quantity or self.batch_size)
+        return self.memory.size >= (quantity or self.batch_size)
+
+    def update_priorities_last_sampled(self, priorities: npt.NDArray[np.floating]) -> None:
+        self.priorities[self.last_sampled] = np.abs(priorities) ** self.alpha + 1e-8
 
     def push(self, transition: Transition) -> None:
-        if len(self.memory) < self.capacity:
-            self.memory.append(transition)
-        else:
-            self.memory[self.last] = transition
-            self.last = (self.last + 1) % self.capacity
-
-    def extend(self, items: Sequence[Transition]) -> None:
-        for item in items:
-            self.push(item)
+        if self.transform is not None:
+            transition = self.transform(transition)
+        idx = self.memory.push(transition)
+        self.priorities[idx] = np.max(self.priorities) or 1.0
 
     def sample(self, quantity: Optional[int] = None) -> TensorTransitionLists:
         if not self.can_sample(quantity):
             raise ValueError("Not enough samples to sample from")
 
+        sample_prob = self.priorities / np.sum(self.priorities)
+        self.last_sampled = np.random.choice(
+            len(sample_prob), size=(quantity or self.batch_size), p=sample_prob
+        )
         start_obs, action, next_obs, reward, terminated, truncated, info = zip(
-            *random.choices(self.memory, k=(quantity or self.batch_size))
+            *self.memory[self.last_sampled]
         )
         start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.get_default_dtype())
         action = torch.as_tensor(np.array(action), dtype=torch.int64)
@@ -47,62 +91,3 @@ class ReplayMemory:
         return TensorTransitionLists(
             start_obs, action, next_obs, reward, terminated, truncated, info
         )
-
-    def reset(self) -> None:
-        self.memory = []
-
-
-@dataclass(eq=False, slots=True, repr=True)
-class ExperienceReplay:
-    abs_actions: AbstractActions
-    batch_size: int = 128
-    capacity: int = 128 * 128
-    memories: dict[ActType, list[Transition]] = field(init=False)
-
-    def __post_init__(self):
-        self.reset()
-
-    def size(self, comand: ActType) -> int:
-        return len(self.memories[comand])
-
-    def can_sample(self, comand: ActType, quantity: Optional[int] = None) -> bool:
-        return self.size(comand) >= (quantity or self.batch_size)
-
-    def push(self, comand: ActType, transition: Transition) -> None:
-        for comand_considered, memory in self.memories.items():
-            processed_transition = transition._replace(
-                start_obs=self.abs_actions.mask(comand_considered, transition.start_obs),
-                next_obs=self.abs_actions.mask(comand_considered, transition.next_obs),
-                reward=self.abs_actions.compatibility(
-                    comand_considered, transition.start_obs, transition.next_obs
-                ),
-            )
-            if len(memory) < self.capacity:
-                memory.append(processed_transition)
-            elif comand_considered == comand or random.random() < 1 / len(self.memories):
-                memory[np.random.randint(self.capacity)] = processed_transition
-
-    def extend(self, comand: ActType, items: Sequence[Transition]) -> None:
-        for item in items:
-            self.push(comand, item)
-
-    def sample(self, comand: ActType, quantity: Optional[int] = None) -> TensorTransitionLists:
-        if not self.can_sample(comand, quantity):
-            raise ValueError("Not enough samples to sample from")
-
-        start_obs, action, next_obs, reward, terminated, truncated, info = zip(
-            *random.choices(self.memories[comand], k=(quantity or self.batch_size))
-        )
-        start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.get_default_dtype())
-        action = torch.as_tensor(np.array(action), dtype=torch.int64)
-        next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.get_default_dtype())
-        reward = torch.as_tensor(np.array(reward), dtype=torch.float32)
-        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool)
-        truncated = torch.as_tensor(np.array(truncated), dtype=torch.bool)
-        info = list(info)
-        return TensorTransitionLists(
-            start_obs, action, next_obs, reward, terminated, truncated, info
-        )
-
-    def reset(self) -> None:
-        self.memories = {comand: [] for comand in self.abs_actions.action_space}

@@ -7,7 +7,7 @@ from . import spaces
 from .utils.repr import torch_style_repr
 from .protocols import Environment, AbstractActions, DynamicPolicy
 from .protocols import ObsType, ActType, OptionType, Transition
-from .policies.experiencereplay import ExperienceReplay
+from .policies.experiencereplay import ExperienceReplay, TransitionTransform
 from .policies.policymapper import PolicyMapper
 
 
@@ -56,7 +56,7 @@ class MangoLayer(Environment):
     randomness: float = 0.0
 
     policy: DynamicPolicy = field(init=False)
-    replay_memory: ExperienceReplay = field(init=False)
+    replay_memory: dict[ActType, ExperienceReplay] = field(init=False)
     intrinsic_reward_log: tuple[list[float], ...] = field(init=False)
     train_loss_log: tuple[list[float], ...] = field(init=False)
     episode_length_log: list[int] = field(init=False)
@@ -69,7 +69,10 @@ class MangoLayer(Environment):
             action_space=self.lower_layer.action_space,
             **dynamic_policy_params,
         )
-        self.replay_memory = ExperienceReplay(abs_actions=self.abs_actions)
+        self.replay_memory = {
+            act: ExperienceReplay(transform=TransitionTransform(self.abs_actions, act))
+            for act in self.action_space
+        }
         self.reset(options={"replay_memory": True, "logs": True})
 
     @property
@@ -95,9 +98,8 @@ class MangoLayer(Environment):
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
-            self.replay_memory.push(
-                comand=action,
-                transition=Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
+            self.replay_memory[action].push(
+                Transition(start_obs, low_action, next_obs, reward, term, trunc, info)
             )
             trajectory += info["mango:trajectory"][1:]
             accumulated_reward += reward
@@ -116,7 +118,8 @@ class MangoLayer(Environment):
     ) -> tuple[ObsType, dict]:
         if options is not None:
             if options.get("replay_memory", False):
-                self.replay_memory.reset()
+                for memory in self.replay_memory.values():
+                    memory.reset()
             if options.get("logs", False):
                 self.intrinsic_reward_log = tuple([] for _ in self.action_space)
                 self.train_loss_log = tuple([] for _ in self.action_space)
@@ -128,13 +131,13 @@ class MangoLayer(Environment):
             action = [act for act in self.action_space]
         to_train = action if isinstance(action, Sequence) else [action]
         for action in to_train:
-            if self.replay_memory.can_sample(action):
-                loss = self.policy.train(
+            if self.replay_memory[action].can_sample():
+                train_info = self.policy.train(
                     comand=action,
-                    transitions=self.replay_memory.sample(action),
+                    transitions=self.replay_memory[action].sample(),
                 )
-                if loss is not None:
-                    self.train_loss_log[action].append(loss)
+                self.train_loss_log[action].append(train_info.loss)
+                self.replay_memory[action].update_priorities_last_sampled(train_info.td)
 
     def __repr__(self) -> str:
         return torch_style_repr(

@@ -3,6 +3,8 @@ import numpy as np
 
 
 def smooth(signal, window=0.05):
+    if len(signal) < 10:
+        return signal
     signal = np.array([s for s in signal if s is not None])
     window = max(3, int(len(signal) * window))
     window_array = np.ones(window) / window

@@ -1,8 +1,9 @@
 from dataclasses import InitVar, dataclass, field
 from typing import Any
+import torch
 
 from mango import spaces
-from mango.protocols import ActType, ObsType, TensorTransitionLists
+from mango.protocols import ActType, ObsType, TensorTransitionLists, TrainInfo
 from mango.protocols import DynamicPolicy, Policy
 
 
@@ -24,7 +25,7 @@ class PolicyMapper(DynamicPolicy):
     def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0):
         return self.policies[comand].get_action(obs, randomness)
 
-    def train(self, comand: ActType, transitions: TensorTransitionLists) -> float | None:
+    def train(self, comand: ActType, transitions: TensorTransitionLists) -> TrainInfo:
         return self.policies[comand].train(transitions)
 
     @classmethod

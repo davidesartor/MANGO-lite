@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Protocol, NamedTuple, Any
+from typing import Callable, Protocol, NamedTuple, Any, overload
 import numpy as np
 import numpy.typing as npt
 import torch
@@ -33,6 +33,11 @@ class TensorTransitionLists(NamedTuple):
     info: list[dict[str, Any]]
 
 
+class TrainInfo(NamedTuple):
+    loss: float
+    td: npt.NDArray[np.floating[Any]]
+
+
 class AbstractActions(Protocol):
     action_space: spaces.Discrete
 
@@ -50,7 +55,7 @@ class Policy(Protocol):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
-    def train(self, transitions: TensorTransitionLists) -> float | None:
+    def train(self, transitions: TensorTransitionLists) -> TrainInfo:
         ...
 
     @classmethod
@@ -62,7 +67,7 @@ class DynamicPolicy(Protocol):
     def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
-    def train(self, comand: ActType, transitions: TensorTransitionLists) -> float | None:
+    def train(self, comand: ActType, transitions: TensorTransitionLists) -> TrainInfo:
         ...
 
     @classmethod
