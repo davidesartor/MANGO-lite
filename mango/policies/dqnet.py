@@ -15,7 +15,7 @@ class DQNetPolicy(Policy):
     net_params: InitVar[dict[str, Any]] = dict()
     lr: InitVar[float] = 1e-3
     gamma: float = field(default=0.9, repr=False)
-    tau: float = field(default=0.01, repr=False)
+    tau: float = field(default=0.005, repr=False)
 
     net: torch.nn.Module = field(init=False, repr=False)
     target_net: torch.nn.Module = field(init=False, repr=False)
