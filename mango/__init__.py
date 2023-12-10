@@ -1,4 +1,4 @@
-from . import actions, environments, policies, neuralnetworks, utils, saving
+from . import actions, environments, policies, neuralnetworks, utils, spaces
 from .mango import Mango
 from .agents import Agent
 
@@ -10,5 +10,5 @@ __all__ = [
     "policies",
     "neuralnetworks",
     "utils",
-    "saving",
+    "spaces",
 ]

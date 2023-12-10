@@ -3,8 +3,7 @@ from dataclasses import InitVar, dataclass, field
 from typing import Any, Optional, Sequence
 import numpy as np
 
-from . import spaces
-from .utils.repr import torch_style_repr
+from . import spaces, utils
 from .protocols import Environment, AbstractActions, DynamicPolicy
 from .protocols import ObsType, ActType, OptionType, Transition
 from .policies.experiencereplay import ExperienceReplay, TransitionTransform
@@ -43,7 +42,9 @@ class MangoEnv(Environment):
         return self.obs, info
 
     def __repr__(self) -> str:
-        return torch_style_repr(self.__class__.__name__, dict(environment=str(self.environment)))
+        return utils.torch_style_repr(
+            self.__class__.__name__, dict(environment=str(self.environment))
+        )
 
 
 @dataclass(eq=False, slots=True, repr=False)
@@ -54,6 +55,7 @@ class MangoLayer(Environment):
     dynamic_policy_params: InitVar[dict[str, Any]]
     verbose_indent: Optional[int] = None
     randomness: float = 0.0
+    train_after_step = False
 
     policy: DynamicPolicy = field(init=False)
     replay_memory: dict[ActType, ExperienceReplay] = field(init=False)
@@ -87,6 +89,12 @@ class MangoLayer(Environment):
     def obs(self) -> ObsType:
         return self.lower_layer.obs
 
+    def set_randomness(self, randomness: float):
+        self.randomness = randomness
+
+    def set_auto_train(self, auto_train: bool):
+        self.train_after_step = auto_train
+
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         if self.verbose_indent is not None:
             print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
@@ -98,19 +106,21 @@ class MangoLayer(Environment):
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
             mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
-            self.replay_memory[action].push(
-                Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
-            )
+            for replay_memory in self.replay_memory.values():
+                replay_memory.push(
+                    Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
+                )
             trajectory += info["mango:trajectory"][1:]
             accumulated_reward += reward
             if term or trunc or mango_term or mango_trunc:
                 break
 
-        info = {**info, "mango:trajectory": trajectory}
-        if info["mango:terminated"] or term:  # or info["mango:truncated"] or trunc:
-            self.intrinsic_reward_log[action].append(
-                self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
-            )
+        info.update({"mango:trajectory": trajectory})
+        intrinsic_reward = self.abs_actions.compatibility(action, start_obs, next_obs)
+        self.intrinsic_reward_log[action].append(intrinsic_reward)
+        self.episode_length_log.append(len(trajectory))
+        if self.train_after_step:
+            self.train(action)
         return self.obs, accumulated_reward, term, trunc, info
 
     def reset(
@@ -139,8 +149,22 @@ class MangoLayer(Environment):
                 self.replay_memory[action].update_priorities_last_sampled(train_info.td)
                 self.train_loss_log[action].append(train_info.loss)
 
+    def explore(self, episode_length: int = 1) -> tuple[float, dict]:
+        obs, info = self.reset()
+        accumulated_reward = 0.0
+        trajectory = [obs]
+        while len(trajectory) < episode_length:
+            action = self.action_space.sample()
+            obs, reward, term, trunc, info = self.step(action)
+            accumulated_reward += reward
+            trajectory += info["mango:trajectory"][1:]
+            if term or trunc:
+                break
+        info.update({"mango:trajectory": trajectory})
+        return accumulated_reward, info
+
     def __repr__(self) -> str:
-        return torch_style_repr(
+        return utils.torch_style_repr(
             self.__class__.__name__,
             dict(abs_actions=str(self.abs_actions), policy=str(self.policy)),
         )
@@ -200,13 +224,6 @@ class Mango(Environment):
         action = option - offsets[layer]
         return layer, action
 
-    def set_randomness(self, randomness: float, layer: Optional[int] = None):
-        if layer == 0:
-            raise ValueError("Cannot set randomness of environment actions")
-        layers_to_set = range(1, len(self.layers)) if layer is None else [layer]
-        for layer in layers_to_set:
-            self.abstract_layers[layer - 1].randomness = randomness
-
     def step(self, option: OptionType) -> tuple[ObsType, float, bool, bool, dict]:
         layer, action = self.relative_option_idx(option)
         if self.verbose:
@@ -216,51 +233,19 @@ class Mango(Environment):
             print(f"MANGO: Option results: {obs=}, {reward=}")
         return obs, reward, term, trunc, info
 
-    def train(
-        self,
-        layer: Optional[int | Sequence[int]] = None,
-        options: Optional[Sequence[OptionType]] = None,
-    ):
-        if options is not None:
-            if layer is not None:
-                raise ValueError("Cannot specify both layer and options")
-            to_train = [self.relative_option_idx(o) for o in options]
-        else:
-            if layer is None:
-                layer = range(1, len(self.layers))
-            elif isinstance(layer, int):
-                layer = [layer]
-            to_train = [(l, None) for l in layer]
-
-        for layer, action in to_train:
-            if layer == 0:
-                raise ValueError("Cannot train environment actions")
-            self.abstract_layers[layer % len(self.layers) - 1].train(action)
-
-    def explore(
-        self, layer: Optional[int] = None, episode_length: int = 1
-    ) -> tuple[ObsType, float, bool, bool, dict]:
-        if layer == 0:
-            raise ValueError("Environment actions do not need to be explored")
-        if layer is None:
-            layer = len(self.layers) - 1
-
-        obs, info = self.reset()
-        accumulated_reward, term, trunc, i = 0.0, False, False, 0
-        for i in range(episode_length):
-            action = self.layers[layer].action_space.sample()
-            obs, reward, term, trunc, info = self.step((layer, action))
-            accumulated_reward += reward
-            if term or trunc:
-                break
-        self.abstract_layers[layer % len(self.layers) - 1].episode_length_log.append(i + 1)
-        return obs, accumulated_reward, term, trunc, info
-
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
         return self.layers[-1].reset(seed=seed, options=options)
 
+    def set_randomness(self, randomness: float):
+        for layer in self.abstract_layers:
+            layer.set_randomness(randomness)
+
+    def set_auto_train(self, auto_train: bool):
+        for layer in self.abstract_layers:
+            layer.set_auto_train(auto_train)
+
     def __repr__(self) -> str:
         params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
-        return torch_style_repr(self.__class__.__name__, params)
+        return utils.torch_style_repr(self.__class__.__name__, params)

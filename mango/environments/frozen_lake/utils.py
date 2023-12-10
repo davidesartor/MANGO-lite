@@ -71,15 +71,6 @@ def random_board(
     return connected
 
 
-def one_hot_encode(
-    coord: Sequence[tuple[int, int]], grid_shape: tuple[int, int]
-) -> npt.NDArray[np.bool_]:
-    grid = np.zeros(grid_shape, dtype=np.bool_)
-    for r, c in coord:
-        grid[r, c] = True
-    return grid
-
-
 def generate_map(
     shape: tuple[int, int] = (8, 8),
     p: float = 0.8,
@@ -106,9 +97,11 @@ def generate_map(
             start_pos = [start_pos[start_pos_idx]]
             connected = random_board(shape, p, contains=goal_pos + start_pos)
         elif start_pos and not goal_pos:
+            start_pos = [start_pos[np.random.randint(len(start_pos))]]
             connected = random_board(shape, p, contains=start_pos)
             goal_pos = [sample_position_in(connected, avoid=start_pos)]
         elif not start_pos and goal_pos:
+            goal_pos = [goal_pos[np.random.randint(len(goal_pos))]]
             connected = random_board(shape, p, contains=goal_pos)
             start_pos = [sample_position_in(connected, avoid=goal_pos)]
         else:
@@ -129,11 +122,3 @@ def generate_map(
     if mirror:
         desc = [row[::-1] + row[shape[0] % 2 :] for row in desc[::-1] + desc[shape[1] % 2 :]]
     return desc
-
-
-def path_to_save_dir(env_params):
-    if (map_name := env_params["map_name"]) == "RANDOM":
-        (row, cols), p = env_params["shape"], env_params["p"]
-        return f"frozen_lake/{row}x{cols}_RANDOM_p={int(p*100)}%/"
-    else:
-        return f"frozen_lake/{map_name}_PREDEFINED/"

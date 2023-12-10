@@ -19,7 +19,7 @@ class DQNetPolicy(Policy):
 
     net: torch.nn.Module = field(init=False, repr=False)
     target_net: torch.nn.Module = field(init=False, repr=False)
-    ema_model: torch.nn.Module | None = field(init=False, repr=False, default=None)
+    # ema_model: torch.nn.Module | None = field(init=False, repr=False, default=None)
     optimizer: torch.optim.Optimizer = field(init=False, repr=False)
     device: torch.device = field(init=False, repr=False)
 
@@ -77,9 +77,9 @@ class DQNetPolicy(Policy):
         for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         # stochastic weight averaging of qnet
-        if self.ema_model is None:
-            self.ema_model = torch.optim.swa_utils.AveragedModel(self.net)
-        self.ema_model.update_parameters(self.net)
+        # if self.ema_model is None:
+        # self.ema_model = torch.optim.swa_utils.AveragedModel(self.net)
+        # self.ema_model.update_parameters(self.net)
 
     def temporal_difference(self, transitions: TensorTransitionLists) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components

@@ -8,7 +8,7 @@ from mango.protocols import AbstractActions, ActType, TensorTransitionLists, Tra
 
 @dataclass(eq=False, slots=True, repr=True)
 class CircularBuffer:
-    capacity: int = 1024
+    capacity: int = 1024 * 16
     memory: npt.NDArray[Any] = field(init=False)
     last_in: int = field(init=False, default=-1)
     size: int = field(init=False, default=0)
@@ -21,6 +21,28 @@ class CircularBuffer:
         self.size = min(self.size + 1, self.capacity)
         self.memory[self.last_in] = item
         return self.last_in
+
+    def __getitem__(self, index: int) -> Any:
+        return self.memory[index]
+
+
+@dataclass(eq=False, slots=True, repr=True)
+class ExponentialBuffer:
+    capacity: int = 1024 * 16
+    memory: npt.NDArray[Any] = field(init=False)
+    size: int = field(init=False, default=0)
+
+    def __post_init__(self):
+        self.memory = np.zeros(self.capacity, dtype=object)
+
+    def push(self, item: Any) -> int:
+        if self.size < self.capacity:
+            idx = self.size
+            self.size += 1
+        else:
+            idx = np.random.randint(self.capacity)
+        self.memory[idx] = item
+        return idx
 
     def __getitem__(self, index: int) -> Any:
         return self.memory[index]
@@ -43,8 +65,9 @@ class TransitionTransform:
 
 @dataclass(eq=False, slots=True, repr=True)
 class ExperienceReplay:
-    batch_size: int = 128
-    capacity: int = 1024
+    batch_size: int = 64
+    capacity: int = 1024 * 16
+    min_capacity: int = 64 * 64
     alpha: float = 0.6
     transform: Optional[Callable[[Transition], Transition]] = None
     memory: CircularBuffer = field(init=False)
@@ -59,7 +82,7 @@ class ExperienceReplay:
         self.priorities = np.zeros(self.capacity, dtype=np.floating)
 
     def can_sample(self, quantity: Optional[int] = None) -> bool:
-        return self.memory.size >= (quantity or self.batch_size)
+        return self.memory.size >= (quantity or self.min_capacity)
 
     def update_priorities_last_sampled(self, temporal_difference: npt.NDArray[np.floating]) -> None:
         self.priorities[self.last_sampled] = np.abs(temporal_difference) ** self.alpha + 1e-8
