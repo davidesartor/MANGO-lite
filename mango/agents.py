@@ -1,24 +1,23 @@
 from __future__ import annotations
 from typing import Any, Optional, Sequence
 from mango import spaces
-from mango.mango import Mango, MangoLayer
+from mango.mango import MangoEnv
 from mango.policies.experiencereplay import ExperienceReplay
-from mango.protocols import Environment, ObsType, Policy, Transition
+from mango.protocols import ObsType, Policy, Transition
 from mango.utils import torch_style_repr
 
 
 class Agent:
     def __init__(
-        self, environment: Environment, policy_cls: type[Policy], policy_params: dict[str, Any]
+        self, environment: MangoEnv, policy_cls: type[Policy], policy_params: dict[str, Any]
     ):
         self.environment = environment
         self.policy = policy_cls.make(action_space=self.environment.action_space, **policy_params)
-        self.replay_memory = ExperienceReplay()
         self.reset(options={"replay_memory": True, "logs": True})
 
     def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
         action = self.policy.get_action(obs, randomness)
-        next_obs, reward, term, trunc, info = self.environment.step(action)
+        next_obs, reward, term, trunc, info = self.environment.step(action, obs)
         trajectory = info["mango:trajectory"]
         info = {k: v for k, v in info.items() if not k.startswith("mango:")}
         info["mango:trajectory"] = trajectory
@@ -55,7 +54,7 @@ class Agent:
     ) -> tuple[ObsType, dict]:
         if options is not None:
             if options.get("replay_memory", False):
-                self.replay_memory.reset()
+                self.replay_memory = ExperienceReplay()
             if options.get("logs", False):
                 self.reward_log = []
                 self.train_loss_log = []
