@@ -13,7 +13,6 @@ from .policies.policymapper import PolicyMapper
 @dataclass(eq=False, slots=True, repr=False)
 class MangoEnv(Environment):
     environment: Environment
-    verbose_indent: Optional[int] = None
     obs: ObsType = field(init=False)
 
     @property
@@ -25,19 +24,16 @@ class MangoEnv(Environment):
         return self.environment.observation_space
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
-        if self.verbose_indent is not None:
-            print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
         next_obs, reward, term, trunc, info = self.environment.step(action)
         info["mango:trajectory"] = [self.obs, next_obs]
-        info["mango:terminated"], info["mango:truncated"] = False, False
+        info["mango:terminated"] = False
+        info["mango:truncated"] = False
         self.obs = next_obs
         return next_obs, float(reward), term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
-        if self.verbose_indent is not None:
-            print("  " * self.verbose_indent + f"resetting environment")
         self.obs, info = self.environment.reset(seed=seed, options=options)
         return self.obs, info
 
@@ -53,7 +49,6 @@ class MangoLayer(Environment):
     abs_actions: AbstractActions
     dynamic_policy_cls: InitVar[type[DynamicPolicy]]
     dynamic_policy_params: InitVar[dict[str, Any]]
-    verbose_indent: Optional[int] = None
     randomness: float = 0.0
     train_after_step = False
 
@@ -96,32 +91,29 @@ class MangoLayer(Environment):
         self.train_after_step = auto_train
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
-        if self.verbose_indent is not None:
-            print("  " * self.verbose_indent + f"obs: {self.obs}, action {action}")
-
-        start_obs, trajectory, accumulated_reward = self.obs, [self.obs], 0.0
+        obs, trajectory, accumulated_reward = self.obs, [self.obs], 0.0
         while True:
-            start_obs, masked_obs = self.obs, self.abs_actions.mask(action, self.obs)
+            masked_obs = self.abs_actions.mask(action, obs)
             low_action = self.policy.get_action(action, masked_obs, self.randomness)
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action)
-            mango_term, mango_trunc = self.abs_actions.beta(action, start_obs, next_obs)
+            mango_term, mango_trunc = self.abs_actions.beta(action, obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
-            for replay_memory in self.replay_memory.values():
-                replay_memory.push(
-                    Transition(start_obs, low_action, next_obs, reward, term, trunc, info),
-                )
+            self.replay_memory[action].push(
+                Transition(obs, low_action, next_obs, reward, term, trunc, info),
+            )
             trajectory += info["mango:trajectory"][1:]
+            obs = next_obs
             accumulated_reward += reward
             if term or trunc or mango_term or mango_trunc:
                 break
 
         info.update({"mango:trajectory": trajectory})
-        intrinsic_reward = self.abs_actions.compatibility(action, start_obs, next_obs)
+        intrinsic_reward = self.abs_actions.compatibility(action, obs, next_obs)
         self.intrinsic_reward_log[action].append(intrinsic_reward)
         self.episode_length_log.append(len(trajectory))
         if self.train_after_step:
             self.train(action)
-        return self.obs, accumulated_reward, term, trunc, info
+        return obs, accumulated_reward, term, trunc, info
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -177,24 +169,18 @@ class Mango(Environment):
         abstract_actions: Sequence[AbstractActions],
         dynamic_policy_params: dict[str, Any] | Sequence[dict[str, Any]],
         dynamic_policy_cls: type[DynamicPolicy] = PolicyMapper,
-        verbose=False,
     ) -> None:
         if not isinstance(dynamic_policy_params, Sequence):
             dynamic_policy_params = [dynamic_policy_params for _ in abstract_actions]
-        indents = [2 * i if verbose else None for i in range(len(abstract_actions) + 1)]
-        self.verbose = verbose
-        self.environment = MangoEnv(environment, verbose_indent=indents[-1])
+        self.environment = MangoEnv(environment)
         self.abstract_layers: list[MangoLayer] = []
-        for actions, indent, params in zip(
-            abstract_actions, reversed(indents[:-1]), dynamic_policy_params
-        ):
+        for actions, params in zip(abstract_actions, dynamic_policy_params):
             self.abstract_layers.append(
                 MangoLayer(
                     abs_actions=actions,
                     lower_layer=self.layers[-1],
                     dynamic_policy_cls=dynamic_policy_cls,
                     dynamic_policy_params=params,
-                    verbose_indent=indent,
                 )
             )
         self.reset()
@@ -226,11 +212,7 @@ class Mango(Environment):
 
     def step(self, option: OptionType) -> tuple[ObsType, float, bool, bool, dict]:
         layer, action = self.relative_option_idx(option)
-        if self.verbose:
-            print(f"MANGO: Executing option {action} at layer {layer}")
         obs, reward, term, trunc, info = self.layers[layer].step(action)
-        if self.verbose:
-            print(f"MANGO: Option results: {obs=}, {reward=}")
         return obs, reward, term, trunc, info
 
     def reset(

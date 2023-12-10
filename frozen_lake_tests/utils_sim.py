@@ -46,7 +46,7 @@ def net_params(map_scale: int):
     map_scale = max((1, map_scale))
     repeats = 2 * map_scale - 1
     return dict(
-        hidden_channels=[2 * 2**map_scale] * repeats,
+        hidden_channels=[4 * 2**map_scale] * repeats,
         hidden_features=[],
         device=torch.device("cuda") if torch.cuda.is_available() else None,
     )
@@ -59,7 +59,7 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
     )
 
 
-def make_option_manager(env, map_scale: int, lr: float = 1e-3, gamma: float = 0.75):
+def make_option_manager(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.75):
     cell_scales = list(range(1, map_scale))
     option_manager = Mango(
         environment=env,
@@ -70,7 +70,7 @@ def make_option_manager(env, map_scale: int, lr: float = 1e-3, gamma: float = 0.
     return option_manager
 
 
-def make_agent(env, map_scale: int, lr: float = 1e-3, gamma: float = 0.95):
+def make_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
     agent = Agent(
         environment=env,
         **dynamic_policy_params(map_scale, lr, gamma),
