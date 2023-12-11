@@ -67,7 +67,6 @@ class TransitionTransform:
 class ExperienceReplay:
     batch_size: int = 64
     capacity: int = 1024 * 16
-    min_capacity: int = 64 * 64
     alpha: float = 0.6
     transform: Optional[Callable[[Transition], Transition]] = None
     memory: CircularBuffer = field(init=False)
@@ -82,7 +81,7 @@ class ExperienceReplay:
         self.priorities = np.zeros(self.capacity, dtype=np.floating)
 
     def can_sample(self, quantity: Optional[int] = None) -> bool:
-        return self.memory.size >= (quantity or self.min_capacity)
+        return self.memory.size >= (quantity or self.batch_size)
 
     def update_priorities_last_sampled(self, temporal_difference: npt.NDArray[np.floating]) -> None:
         self.priorities[self.last_sampled] = np.abs(temporal_difference) ** self.alpha + 1e-8
