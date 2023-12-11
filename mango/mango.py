@@ -47,7 +47,6 @@ class MangoLayer(MangoEnv):
         dynamic_policy_cls: type[DynamicPolicy],
         dynamic_policy_params: dict[str, Any],
         randomness: float = 0.0,
-        train_after_step=False,
     ):
         self.lower_layer = lower_layer
         self.abs_actions = abs_actions
@@ -57,7 +56,6 @@ class MangoLayer(MangoEnv):
             **dynamic_policy_params,
         )
         self.set_randomness(randomness)
-        self.set_auto_train(train_after_step)
         self.reset(options={"replay_memory": True, "logs": True})
 
     @property
@@ -71,9 +69,6 @@ class MangoLayer(MangoEnv):
     def set_randomness(self, randomness: float):
         self.randomness = randomness
 
-    def set_auto_train(self, auto_train: bool):
-        self.train_after_step = auto_train
-
     def step(self, action: ActType, obs: ObsType) -> tuple[ObsType, float, bool, bool, dict]:
         trajectory = [obs]
         accumulated_reward = 0.0
@@ -83,9 +78,10 @@ class MangoLayer(MangoEnv):
             next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action, obs=obs)
             mango_term, mango_trunc = self.abs_actions.beta(action, obs, next_obs)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
-            self.replay_memory[action].push(
-                Transition(obs, low_action, next_obs, reward, term, trunc, info),
-            )
+            for replay_memory in self.replay_memory.values():
+                replay_memory.push(
+                    Transition(obs, low_action, next_obs, reward, term, trunc, info),
+                )
             trajectory += info["mango:trajectory"][1:]
             obs = next_obs
             accumulated_reward += reward
@@ -93,11 +89,10 @@ class MangoLayer(MangoEnv):
                 break
 
         info.update({"mango:trajectory": trajectory})
-        intrinsic_reward = self.abs_actions.compatibility(action, obs, next_obs)
-        self.intrinsic_reward_log[action].append(intrinsic_reward)
-        self.episode_length_log.append(len(trajectory))
-        if self.train_after_step:
-            self.train(action)
+        if mango_term or term:
+            intrinsic_reward = self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
+            self.intrinsic_reward_log[action].append(intrinsic_reward)
+            self.episode_length_log.append(len(trajectory))
         return obs, accumulated_reward, term, trunc, info
 
     def reset(
@@ -195,8 +190,7 @@ class Mango(MangoEnv):
 
     def step(self, option: OptionType, obs: ObsType) -> tuple[ObsType, float, bool, bool, dict]:
         layer, action = self.relative_option_idx(option)
-        obs, reward, term, trunc, info = self.layers[layer].step(action=action, obs=obs)
-        return obs, reward, term, trunc, info
+        return self.layers[layer].step(action=action, obs=obs)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -206,10 +200,6 @@ class Mango(MangoEnv):
     def set_randomness(self, randomness: float):
         for layer in self.abstract_layers:
             layer.set_randomness(randomness)
-
-    def set_auto_train(self, auto_train: bool):
-        for layer in self.abstract_layers:
-            layer.set_auto_train(auto_train)
 
     def __repr__(self) -> str:
         params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
