@@ -49,7 +49,7 @@ class SubGridMovement(AbstractActions):
         next_y, next_x = self.obs2coord(transition.next_obs)
         if start_y != next_y or start_x != next_x:
             return True, False
-        if transition.action == Actions.TASK:
+        if transition.action == Actions.TASK and action == Actions.TASK:
             return False, True
         return False, random.random() < self.p_termination
 
@@ -58,6 +58,9 @@ class SubGridMovement(AbstractActions):
         next_y, next_x = self.obs2coord(transition.next_obs)
         delta_y, delta_x = Actions.to_delta(Actions(int(action)))
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
+
+        if transition.action == Actions.TASK and action != Actions.TASK:
+            return self.failure_reward
 
         if next_y == next_y_expected and next_x == next_x_expected:
             return transition.reward if action == Actions.TASK else self.success_reward
