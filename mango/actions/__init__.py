@@ -1,3 +1,3 @@
-from . import grid2d
+from . import grid2D
 
-__all__ = ["grid2d"]
+__all__ = ["grid2D"]

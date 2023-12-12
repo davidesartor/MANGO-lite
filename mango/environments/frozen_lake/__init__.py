@@ -1,4 +1,4 @@
-from mango.actions.grid2d import Actions
+from mango.actions.grid2D import Actions
 from .wrappers import CustomFrozenLakeEnv
 from . import wrappers, plot_utils, utils
 

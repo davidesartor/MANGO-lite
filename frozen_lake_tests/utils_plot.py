@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mango.actions import grid2d
+from mango.actions import grid2D
 
 
 def smooth(signal, window=0.05):
@@ -17,7 +17,7 @@ def plot_mango_loss_reward(mango, gamma=0.75, layers=None, save_path=None):
     plt.figure(figsize=(12, 3 * (1 + len(mango.abstract_layers))))
     for layer_idx in layers or range(1, len(mango.abstract_layers) + 1):
         layer = mango.abstract_layers[layer_idx - 1]
-        for action in grid2d.Actions:
+        for action in grid2D.Actions:
             plt.subplot(len(mango.abstract_layers) + 1, 3, 3 * (layer_idx - 1) + 1)
             plt.title(f"loss Layer {layer_idx}")
             plt.semilogy(smooth(layer.train_loss_log[action]), label=f"{action.name}")
