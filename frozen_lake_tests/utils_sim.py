@@ -36,7 +36,8 @@ def abstract_actions(map_scale: int, cell_scales: list[int], gamma: float):
             grid_shape=(2**map_scale, 2**map_scale),
             agent_channel=0,
             invalid_channel=1,
-            intrinsic_reward=(1 - gamma),
+            success_reward=1.0,
+            failure_reward=-1.0 / (1 - gamma),
         )
         for cell_scale in cell_scales
     ]

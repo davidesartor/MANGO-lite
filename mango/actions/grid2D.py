@@ -31,7 +31,8 @@ class SubGridMovement(AbstractActions):
     agent_channel: Optional[int] = None
     invalid_channel: Optional[int] = None
     p_termination: float = 0.1
-    intrinsic_reward: float = 1.0
+    success_reward: float = 1.0
+    failure_reward: float = -1.0
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
 
@@ -54,20 +55,17 @@ class SubGridMovement(AbstractActions):
         return False, random.random() < self.p_termination
 
     def reward(self, action: ActType, transition: Transition) -> float:
-        if action == Actions.TASK:
-            return transition.reward
-
         start_y, start_x = self.obs2coord(transition.start_obs)
         next_y, next_x = self.obs2coord(transition.next_obs)
         delta_y, delta_x = Actions.to_delta(Actions(int(action)))
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
 
         if next_y == next_y_expected and next_x == next_x_expected:
-            return 1.0  # self.intrinsic_reward
+            return transition.reward if action == Actions.TASK else self.success_reward
         elif next_y == start_y and next_x == start_x:
             return 0.0
         else:
-            return -1.0
+            return self.failure_reward
 
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         if self.agent_channel is None:
