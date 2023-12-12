@@ -35,6 +35,7 @@ class Agent:
                 break
         self.reward_log.append(accumulated_reward)
         self.episode_length_log.append(len(trajectory))
+        info = {"mango:trajectory": trajectory}
         return accumulated_reward, info
 
     def train(self):

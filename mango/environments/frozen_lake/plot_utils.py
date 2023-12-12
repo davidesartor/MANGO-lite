@@ -72,9 +72,7 @@ def get_qval(policy: DQNetPolicy, obs_list: list[ObsType]) -> tuple[np.ndarray, 
     return best_qvals.cpu().detach().numpy(), actions.cpu().detach().numpy()
 
 
-def plot_qval_heatmap(
-    policy: DQNetPolicy, all_obs_list: tuple[list[ObsType], list[bool]], env, vmin=-1, vmax=1
-):
+def plot_qval_heatmap(policy: DQNetPolicy, all_obs_list: tuple[list[ObsType], list[bool]], env):
     obs_list, valid_mask = all_obs_list
     best_qvals, actions = get_qval(policy, obs_list)
     best_qvals[~np.array(valid_mask, dtype=bool)] = np.nan
@@ -82,7 +80,8 @@ def plot_qval_heatmap(
 
     cmap = mpl.colormaps.get_cmap("RdYlGn")  # type: ignore
     cmap.set_bad(color="aqua")
-    plt.imshow(best_qvals, cmap=cmap, vmin=vmin, vmax=vmax)
+    range = max(abs(best_qvals))
+    plt.imshow(best_qvals, cmap=cmap, vmin=-range, vmax=range)
     plt.colorbar()
     Y, X = np.indices(env.unwrapped.desc.shape)
     for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask):
