@@ -80,8 +80,9 @@ def plot_qval_heatmap(policy: DQNetPolicy, all_obs_list: tuple[list[ObsType], li
 
     cmap = mpl.colormaps.get_cmap("RdYlGn")  # type: ignore
     cmap.set_bad(color="aqua")
-    range = max(abs(best_qvals))
-    plt.imshow(best_qvals, cmap=cmap, vmin=-range, vmax=range)
+    vmin = np.where(best_qvals == np.nan, 0, best_qvals).max()
+    vmax = np.where(best_qvals == np.nan, 0, best_qvals).min()
+    plt.imshow(best_qvals, cmap=cmap, vmin=vmin, vmax=vmax)
     plt.colorbar()
     Y, X = np.indices(env.unwrapped.desc.shape)
     for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask):
