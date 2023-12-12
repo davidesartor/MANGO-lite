@@ -3,7 +3,7 @@ from enum import IntEnum
 import random
 from typing import ClassVar, Optional
 import numpy as np
-from mango.protocols import AbstractActions, ObsType, ActType
+from mango.protocols import AbstractActions, ObsType, ActType, Transition
 from mango import spaces
 
 
@@ -12,6 +12,7 @@ class Actions(IntEnum):
     DOWN = 1
     RIGHT = 2
     UP = 3
+    TASK = 4
 
     def to_delta(self) -> tuple[int, int]:
         return {
@@ -19,6 +20,7 @@ class Actions(IntEnum):
             Actions.DOWN: (1, 0),
             Actions.RIGHT: (0, 1),
             Actions.UP: (-1, 0),
+            Actions.TASK: (0, 0),
         }[self]
 
 
@@ -28,10 +30,10 @@ class SubGridMovement(AbstractActions):
     grid_shape: tuple[int, int]
     agent_channel: Optional[int] = None
     invalid_channel: Optional[int] = None
-    p_termination: float = 0.05
-    reward: float = 1.0
+    p_termination: float = 0.1
+    intrinsic_reward: float = 1.0
 
-    action_space: ClassVar = spaces.Discrete(4)
+    action_space: ClassVar = spaces.Discrete(len(Actions))
 
     def obs2coord(self, obs: ObsType) -> tuple[int, int]:
         if self.agent_channel is not None:
@@ -41,21 +43,27 @@ class SubGridMovement(AbstractActions):
             y, x = obs
         return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
 
-    def beta(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> tuple[bool, bool]:
-        start_y, start_x = self.obs2coord(start_obs)
-        next_y, next_x = self.obs2coord(next_obs)
+    def beta(self, action: ActType, transition: Transition) -> tuple[bool, bool]:
+        start_y, start_x = self.obs2coord(transition.start_obs)
+        next_y, next_x = self.obs2coord(transition.next_obs)
         if start_y != next_y or start_x != next_x:
             return True, False
+        if transition.action == Actions.TASK:
+            return False, True
+
         return False, random.random() < self.p_termination
 
-    def compatibility(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> float:
-        start_y, start_x = self.obs2coord(start_obs)
-        next_y, next_x = self.obs2coord(next_obs)
+    def reward(self, action: ActType, transition: Transition) -> float:
+        if action == Actions.TASK:
+            return transition.reward
+
+        start_y, start_x = self.obs2coord(transition.start_obs)
+        next_y, next_x = self.obs2coord(transition.next_obs)
         delta_y, delta_x = Actions.to_delta(Actions(int(action)))
         next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
 
         if next_y == next_y_expected and next_x == next_x_expected:
-            return self.reward
+            return 1.0  # self.intrinsic_reward
         elif next_y == start_y and next_x == start_x:
             return 0.0
         else:

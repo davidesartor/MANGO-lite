@@ -1,10 +1,9 @@
 from __future__ import annotations
 from typing import Any, Optional, Sequence
-import numpy as np
 
 from . import spaces, utils
-from .protocols import Environment, AbstractActions, DynamicPolicy
-from .protocols import ObsType, ActType, OptionType, Transition
+from .protocols import Environment, AbstractActions, DynamicPolicy, Policy
+from .protocols import ObsType, ActType, Transition
 from .policies.experiencereplay import ExperienceReplay, TransitionTransform
 from .policies.policymapper import PolicyMapper
 
@@ -15,14 +14,17 @@ class MangoEnv(Environment):
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return self.environment.action_space
+        return spaces.Discrete(self.environment.action_space.n + 1)
 
     @property
     def observation_space(self) -> spaces.Space:
         return self.environment.observation_space
 
     def step(self, action: ActType, obs: ObsType) -> tuple[ObsType, float, bool, bool, dict]:
-        next_obs, reward, term, trunc, info = self.environment.step(action)
+        if action in self.environment.action_space:
+            next_obs, reward, term, trunc, info = self.environment.step(action)
+        else:
+            next_obs, reward, term, trunc, info = obs, 0.0, False, False, {}
         info["mango:trajectory"] = [obs, next_obs]
         info["mango:terminated"] = False
         info["mango:truncated"] = False
@@ -74,14 +76,17 @@ class MangoLayer(MangoEnv):
         accumulated_reward = 0.0
         while True:
             masked_obs = self.abs_actions.mask(action, obs)
-            low_action = self.policy.get_action(action, masked_obs, self.randomness)
-            next_obs, reward, term, trunc, info = self.lower_layer.step(action=low_action, obs=obs)
-            mango_term, mango_trunc = self.abs_actions.beta(action, obs, next_obs)
+            lower_action = self.policy.get_action(
+                comand=action, obs=masked_obs, randomness=self.randomness
+            )
+            next_obs, reward, term, trunc, info = self.lower_layer.step(
+                action=lower_action, obs=obs
+            )
+            transition = Transition(obs, lower_action, next_obs, reward, term, trunc, info)
+            mango_term, mango_trunc = self.abs_actions.beta(action, transition)
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
             for replay_memory in self.replay_memory.values():
-                replay_memory.push(
-                    Transition(obs, low_action, next_obs, reward, term, trunc, info),
-                )
+                replay_memory.push(transition)
             trajectory += info["mango:trajectory"][1:]
             obs = next_obs
             accumulated_reward += reward
@@ -89,8 +94,8 @@ class MangoLayer(MangoEnv):
                 break
 
         info.update({"mango:trajectory": trajectory})
-        if mango_term or term:
-            intrinsic_reward = self.abs_actions.compatibility(action, trajectory[0], trajectory[-1])
+        if mango_term or term or trunc:
+            intrinsic_reward = self.abs_actions.reward(action, transition)
             self.intrinsic_reward_log[action].append(intrinsic_reward)
             self.episode_length_log.append(len(trajectory))
         return obs, accumulated_reward, term, trunc, info
@@ -123,20 +128,6 @@ class MangoLayer(MangoEnv):
                 self.replay_memory[action].update_priorities_last_sampled(train_info.td)
                 self.train_loss_log[action].append(train_info.loss)
 
-    def explore(self, episode_length: int = 1) -> tuple[float, dict]:
-        obs, info = self.reset()
-        accumulated_reward = 0.0
-        trajectory = [obs]
-        while len(trajectory) < episode_length:
-            action = self.action_space.sample()
-            obs, reward, term, trunc, info = self.step(action, obs)
-            accumulated_reward += reward
-            trajectory += info["mango:trajectory"][1:]
-            if term or trunc:
-                break
-        info.update({"mango:trajectory": trajectory})
-        return accumulated_reward, info
-
     def __repr__(self) -> str:
         return utils.torch_style_repr(
             self.__class__.__name__,
@@ -149,8 +140,10 @@ class Mango(MangoEnv):
         self,
         environment: Environment,
         abstract_actions: Sequence[AbstractActions],
-        dynamic_policy_params: dict[str, Any] | Sequence[dict[str, Any]],
+        policy_cls: type[Policy],
         dynamic_policy_cls: type[DynamicPolicy] = PolicyMapper,
+        policy_params: dict[str, Any] = {},
+        dynamic_policy_params: dict[str, Any] | Sequence[dict[str, Any]] = {},
     ) -> None:
         if not isinstance(dynamic_policy_params, Sequence):
             dynamic_policy_params = [dynamic_policy_params for _ in abstract_actions]
@@ -165,42 +158,60 @@ class Mango(MangoEnv):
                     dynamic_policy_params=params,
                 )
             )
-        self.reset()
-
-    @property
-    def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(sum(int(layer.action_space.n) for layer in self.layers))
-
-    @property
-    def observation_space(self) -> spaces.Space:
-        return self.environment.observation_space
+        self.policy = policy_cls.make(action_space=self.layers[-1].action_space, **policy_params)
+        self.reset(options={"replay_memory": True, "logs": True})
 
     @property
     def layers(self) -> tuple[MangoEnv | MangoLayer, ...]:
         return (self.environment, *self.abstract_layers)
 
-    def relative_option_idx(self, option: OptionType) -> tuple[int, ActType]:
-        if isinstance(option, tuple):
-            return option
-        offsets = np.cumsum([layer.action_space.n for layer in self.layers])
-        offsets = [0] + list(offsets)
-        layer = int(np.searchsorted(offsets, option + 1)) - 1
-        action = option - offsets[layer]
-        return layer, action
+    def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
+        action = self.policy.get_action(obs, randomness)
+        next_obs, reward, term, trunc, info = self.layers[-1].step(action, obs)
+        info["mango:terminated"] = info["mango:terminated"] = False
+        self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
+        return next_obs, reward, term, trunc, info
 
-    def step(self, option: OptionType, obs: ObsType) -> tuple[ObsType, float, bool, bool, dict]:
-        layer, action = self.relative_option_idx(option)
-        return self.layers[layer].step(action=action, obs=obs)
+    def run_episode(
+        self,
+        randomness: float = 0.0,
+        episode_length: Optional[int] = None,
+    ) -> tuple[float, dict]:
+        obs, info = self.environment.reset()
+        accumulated_reward = 0.0
+        trajectory = [obs]
+        while len(trajectory) < episode_length or episode_length is None:
+            obs, reward, term, trunc, info = self.step(obs, randomness=randomness)
+            accumulated_reward += reward
+            trajectory += info["mango:trajectory"][1:]
+            if term or trunc:
+                break
+        info.update({"mango:trajectory": trajectory})
+        self.reward_log.append(accumulated_reward)
+        self.episode_length_log.append(len(info["mango:trajectory"]))
+        return accumulated_reward, info
+
+    def train(self):
+        if self.replay_memory.can_sample():
+            train_info = self.policy.train(transitions=self.replay_memory.sample())
+            self.replay_memory.update_priorities_last_sampled(train_info.td)
+            self.train_loss_log.append(train_info.loss)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
+        if options is not None:
+            if options.get("replay_memory", False):
+                self.replay_memory = ExperienceReplay()
+            if options.get("logs", False):
+                self.reward_log = []
+                self.train_loss_log = []
+                self.episode_length_log = []
         return self.layers[-1].reset(seed=seed, options=options)
 
-    def set_randomness(self, randomness: float):
-        for layer in self.abstract_layers:
-            layer.set_randomness(randomness)
-
     def __repr__(self) -> str:
-        params = {f"{i+1}": str(layer) for i, layer in enumerate(self.layers)}
+        params = {
+            "policy": str(self.policy),
+            **{f"{i+1}": str(layer) for i, layer in enumerate(self.layers)},
+        }
         return utils.torch_style_repr(self.__class__.__name__, params)

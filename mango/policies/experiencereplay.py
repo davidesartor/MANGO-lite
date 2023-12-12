@@ -57,9 +57,7 @@ class TransitionTransform:
         return transition._replace(
             start_obs=self.abstract_actions.mask(self.comand, transition.start_obs),
             next_obs=self.abstract_actions.mask(self.comand, transition.next_obs),
-            reward=self.abstract_actions.compatibility(
-                self.comand, transition.start_obs, transition.next_obs
-            ),
+            reward=self.abstract_actions.reward(self.comand, transition),
         )
 
 

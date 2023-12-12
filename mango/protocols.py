@@ -44,10 +44,10 @@ class AbstractActions(Protocol):
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         ...
 
-    def beta(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> tuple[bool, bool]:
+    def beta(self, action: ActType, transition: Transition) -> tuple[bool, bool]:
         ...
 
-    def compatibility(self, action: ActType, start_obs: ObsType, next_obs: ObsType) -> float:
+    def reward(self, action: ActType, transition: Transition) -> float:
         ...
 
 

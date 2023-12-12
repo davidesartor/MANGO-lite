@@ -36,7 +36,7 @@ def abstract_actions(map_scale: int, cell_scales: list[int], gamma: float):
             grid_shape=(2**map_scale, 2**map_scale),
             agent_channel=0,
             invalid_channel=1,
-            reward=(1 - gamma),
+            intrinsic_reward=(1 - gamma),
         )
         for cell_scale in cell_scales
     ]
@@ -59,15 +59,21 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
     )
 
 
-def make_option_manager(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.75):
+def make_mango_agent(
+    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, gamma_options: float = 0.75
+):
     cell_scales = list(range(1, map_scale))
-    option_manager = Mango(
+    mango_agent = Mango(
         environment=env,
-        abstract_actions=abstract_actions(map_scale, cell_scales, gamma),
-        dynamic_policy_params=[dynamic_policy_params(scale, lr, gamma) for scale in cell_scales],
+        abstract_actions=abstract_actions(map_scale, cell_scales, gamma_options),
+        policy_cls=DQNetPolicy,
+        policy_params=dict(lr=lr, gamma=gamma, net_params=net_params(map_scale)),
+        dynamic_policy_params=[
+            dynamic_policy_params(scale, lr, gamma_options) for scale in cell_scales
+        ],
     )
-    option_manager.reset()
-    return option_manager
+    mango_agent.reset()
+    return mango_agent
 
 
 def make_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):

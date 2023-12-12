@@ -11,6 +11,14 @@ from mango.protocols import ObsType
 from mango.policies import DQNetPolicy
 
 
+def plot_map(env: FrozenLakeWrapper):
+    plt.figure(figsize=(3, 3))
+    plt.title(f"Environment")
+    plt.imshow(env.unwrapped.render())
+    plt.xticks([])
+    plt.yticks([])
+
+
 def plot_grid(env: FrozenLakeWrapper, cell_shape: tuple[int, int], alpha=0.2):
     grid_shape = env.unwrapped.desc.shape
     pixels_in_square = env.unwrapped.cell_size
@@ -87,6 +95,11 @@ def plot_qval_heatmap(
                 xytext=(x - 0.4 * dx, y - 0.4 * dy),
                 arrowprops=dict(width=1, headwidth=3, headlength=3),
             )
+            # draw circles id dx == dy == 0
+            if dx == 0 and dy == 0:
+                plt.gca().add_patch(
+                    plt.Circle((x, y), radius=0.2, fc="black", alpha=0.99)  # type: ignore
+                )
     return best_qvals
 
 
@@ -111,15 +124,28 @@ def plot_all_abstractions(mango: Mango, trajectory: list[ObsType] | list[int] = 
 
 
 def plot_all_qvals(
-    mango: Mango, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
+    mango_agent: Mango, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
 ):
     # TODO: fix type hints, this only works for specific Mango instances
-    env: FrozenLakeWrapper = mango.environment.environment  # type: ignore
-    plt.figure(figsize=((size + 1) * len(Actions) + size, size * len(mango.abstract_layers)))
-    n_rows, n_cols = len(mango.abstract_layers), len(Actions) + 1
-    for row, layer in enumerate(mango.abstract_layers):
+    env: FrozenLakeWrapper = mango_agent.environment.environment  # type: ignore
+    n_rows, n_cols = len(mango_agent.abstract_layers) + 1, len(Actions) + 1
+    plt.figure(figsize=((size) * n_cols, size * n_rows))
+    plt.subplot(n_rows, n_cols, 1)
+    plt.title(f"Environment")
+    plt.imshow(env.unwrapped.render())
+    plot_trajectory(trajectory, env)
+    plt.xticks([])
+    plt.yticks([])
+
+    plt.subplot(n_rows, n_cols, 2)
+    plt.title(f"Agent Qvals")
+    all_obs_list = all_observations(env)  # type: ignore
+    plot_qval_heatmap(mango_agent.policy, all_obs_list, env)  # type: ignore
+    plt.xticks([])
+    plt.yticks([])
+    for row, layer in enumerate(reversed(mango_agent.abstract_layers), start=1):
         plt.subplot(n_rows, n_cols, row * (len(Actions) + 1) + 1)
-        plt.title(f"Layer {row+1} Abstraction")
+        plt.title(f"Layer {n_rows-row} Abstraction")
         plt.imshow(env.unwrapped.render())
         plot_trajectory(trajectory, env)
         plot_grid(env, layer.abs_actions.cell_shape)  # type: ignore
@@ -137,11 +163,36 @@ def plot_all_qvals(
         plt.savefig(save_path, bbox_inches="tight")
 
 
+def plot_all_qvals_mango_agent(
+    mango_agent: Mango, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
+):
+    # TODO: fix type hints, this only works for specific Mango instances
+    env: FrozenLakeWrapper = mango.environment.environment  # type: ignore
+    plt.figure(figsize=((size + 2) + size, size))
+
+    plt.subplot(1, 2, 1)
+    plt.title(f"Environment")
+    plt.imshow(env.unwrapped.render())
+    plot_trajectory(trajectory, env)
+    plt.xticks([])
+    plt.yticks([])
+
+    plt.subplot(1, 2, 2)
+    plt.title(f"Qvals")
+    all_obs_list = all_observations(env)  # type: ignore
+    plot_qval_heatmap(mango_agent.policy, all_obs_list, env)  # type: ignore
+    plt.xticks([])
+    plt.yticks([])
+
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches="tight")
+
+
 def plot_all_qvals_agent(
     agent: Agent, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
 ):
     # TODO: fix type hints, this only works for specific Mango instances
-    env: FrozenLakeWrapper = agent.environment.environment  # type: ignore
+    env: FrozenLakeWrapper = agent.environment  # type: ignore
     plt.figure(figsize=((size + 2) + size, size))
 
     plt.subplot(1, 2, 1)

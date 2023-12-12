@@ -8,22 +8,18 @@ from mango.protocols import ActType, ObsType, TensorTransitionLists, TrainInfo, 
 from mango.neuralnetworks.networks import ConvEncoder
 
 
-@dataclass(eq=False, slots=True, repr=True)
 class DQNetPolicy(Policy):
-    action_space: spaces.Discrete
-
-    net_params: InitVar[dict[str, Any]] = dict()
-    lr: InitVar[float] = 1e-3
-    gamma: float = field(default=0.9, repr=False)
-    tau: float = field(default=0.005, repr=False)
-
-    net: torch.nn.Module = field(init=False, repr=False)
-    target_net: torch.nn.Module = field(init=False, repr=False)
-    # ema_model: torch.nn.Module | None = field(init=False, repr=False, default=None)
-    optimizer: torch.optim.Optimizer = field(init=False, repr=False)
-    device: torch.device = field(init=False, repr=False)
-
-    def __post_init__(self, net_params, lr):
+    def __init__(
+        self,
+        action_space: spaces.Discrete,
+        net_params: dict[str, Any] = dict(),
+        lr: float = 1e-3,
+        gamma: float = 0.9,
+        tau: float = 0.005,
+    ):
+        self.action_space = action_space
+        self.gamma = gamma
+        self.tau = tau
         self.net = ConvEncoder(
             in_channels=None, out_features=int(self.action_space.n), **net_params
         ).train()
@@ -102,8 +98,10 @@ class DQNetPolicy(Policy):
             qval_next = self.net(next_obs)
             best_next_action = qval_next.argmax(dim=1, keepdim=True)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
-            best_qval_next[terminated_option] = 1.0
-            best_qval_next[truncated_option] = 1.0
+            # mango specific termination qvals
+            avg_qval_next = qval_next.mean()
+            best_qval_next[terminated_option] = avg_qval_next
+            best_qval_next[truncated_option] = avg_qval_next
             best_qval_next[terminated] = 0.0
 
         return qval_sampled_action - rewards - self.gamma * best_qval_next
