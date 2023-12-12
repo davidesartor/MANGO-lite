@@ -92,16 +92,16 @@ class DQNetPolicy(Policy):
         truncated_option = torch.as_tensor(truncated_option, dtype=torch.bool, device=self.device)
 
         # double DQN - use qnet to select best action, use target_net to evaluate it
-        qval_start = self.net(start_obs)
+        qval_start: torch.Tensor = self.net(start_obs)
         qval_sampled_action = torch.gather(qval_start, 1, actions.unsqueeze(1)).squeeze(1)
         with torch.no_grad():
-            qval_next = self.net(next_obs)
+            qval_next: torch.Tensor = self.net(next_obs)
             best_next_action = qval_next.argmax(dim=1, keepdim=True)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
+
             # mango specific termination qvals
-            avg_qval_next = qval_next.mean()
-            best_qval_next[terminated_option] = avg_qval_next
-            best_qval_next[truncated_option] = avg_qval_next
+            best_qval_next[terminated_option] = 0.5 * 1.0 / self.gamma
+            best_qval_next[truncated_option] = 0.5 * 1.0 / self.gamma
             best_qval_next[terminated] = 0.0
 
         return qval_sampled_action - rewards - self.gamma * best_qval_next

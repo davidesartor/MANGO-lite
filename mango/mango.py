@@ -87,6 +87,7 @@ class MangoLayer(MangoEnv):
             info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
             for replay_memory in self.replay_memory.values():
                 replay_memory.push(transition)
+            # self.replay_memory[action].push(transition)
             trajectory += info["mango:trajectory"][1:]
             obs = next_obs
             accumulated_reward += reward

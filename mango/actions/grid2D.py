@@ -51,7 +51,6 @@ class SubGridMovement(AbstractActions):
             return True, False
         if transition.action == Actions.TASK:
             return False, True
-
         return False, random.random() < self.p_termination
 
     def reward(self, action: ActType, transition: Transition) -> float:

@@ -1,7 +1,7 @@
 import sys
-from typing import Any
 
 sys.path.append("..")
+from typing import Any
 import torch
 from mango.policies.dqnet import DQNetPolicy
 from mango.environments import frozen_lake
@@ -9,7 +9,7 @@ from mango.actions import grid2d
 from mango import Mango, Agent
 
 
-def env_params(map_scale: int, p_frozen: float | None = None, start_anywhere: bool = False):
+def env_params(map_scale: int, p_frozen: float | None = None):
     if p_frozen is None:
         return dict(map_name=f"{2**map_scale}x{2**map_scale}")
     return dict(
@@ -18,13 +18,12 @@ def env_params(map_scale: int, p_frozen: float | None = None, start_anywhere: bo
         shape=(2**map_scale, 2**map_scale),
         goal_pos=[(0, 0), (-1, 0), (-1, -1), (0, -1)],
         # start_pos=[(0, 0), (-1, 0), (-1, -1), (0, -1)],
-        start_anywhere=start_anywhere,
     )
 
 
-def make_env(map_scale: int, p_frozen: float | None = None, start_anywhere: bool = False):
-    env = frozen_lake.CustomFrozenLakeEnv(**env_params(map_scale, p_frozen, start_anywhere))  # type: ignore
-    env = frozen_lake.wrappers.ReInitOnReset(env, **env_params(map_scale, p_frozen, start_anywhere))
+def make_env(map_scale: int, p_frozen: float | None = None):
+    env = frozen_lake.CustomFrozenLakeEnv(**env_params(map_scale, p_frozen))  # type: ignore
+    env = frozen_lake.wrappers.ReInitOnReset(env, **env_params(map_scale, p_frozen))
     env = frozen_lake.wrappers.TensorObservation(env, one_hot=True)
     return env
 
@@ -37,7 +36,7 @@ def abstract_actions(map_scale: int, cell_scales: list[int], gamma: float):
             agent_channel=0,
             invalid_channel=1,
             success_reward=1.0,
-            failure_reward=-1.0 / (1 - gamma),
+            failure_reward=-1.0,
         )
         for cell_scale in cell_scales
     ]
@@ -61,7 +60,7 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
 
 
 def make_mango_agent(
-    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, gamma_options: float = 0.8
+    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, gamma_options: float = 0.95
 ):
     cell_scales = list(range(1, map_scale))
     mango_agent = Mango(
