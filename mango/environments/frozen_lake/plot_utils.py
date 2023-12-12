@@ -121,6 +121,7 @@ def plot_all_abstractions(mango: Mango, trajectory: list[ObsType] | list[int] = 
         plot_grid(env, layer.abs_actions.cell_shape)  # type: ignore
         plt.xticks([])
         plt.yticks([])
+    plt.show()
 
 
 def plot_all_qvals(

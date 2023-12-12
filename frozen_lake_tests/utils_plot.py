@@ -58,6 +58,7 @@ def plot_mango_loss_reward(mango, gamma=0.75, layers=None, save_path=None):
     plt.grid(True)
     if save_path is not None:
         plt.savefig(save_path, bbox_inches="tight")
+    plt.show()
 
 
 def plot_agent_loss_reward(agent, save_path=None):
@@ -84,3 +85,4 @@ def plot_agent_loss_reward(agent, save_path=None):
 
     if save_path is not None:
         plt.savefig(save_path, bbox_inches="tight")
+    plt.show()
