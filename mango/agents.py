@@ -13,30 +13,26 @@ class Agent:
         self.policy = policy_cls.make(action_space=self.environment.action_space, **policy_params)
         self.reset(options={"replay_memory": True, "logs": True})
 
-    def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
-        action = self.policy.get_action(obs, randomness)
-        next_obs, reward, term, trunc, info = self.environment.step(action)
-        self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
-        return next_obs, reward, term, trunc, info
-
     def run_episode(
         self,
         randomness: float = 0.0,
         episode_length: Optional[int] = None,
-    ) -> tuple[float, dict]:
+    ) -> list[Transition]:
         obs, info = self.environment.reset()
-        accumulated_reward = 0.0
-        trajectory = [obs]
-        while episode_length is None or len(trajectory) < episode_length:
-            obs, reward, term, trunc, info = self.step(obs, randomness=randomness)
-            accumulated_reward += reward
-            trajectory.append(obs)
-            if term or trunc:
+        transitions = []
+        while episode_length is None or len(transitions) < episode_length:
+            action = self.policy.get_action(obs, randomness)
+            next_obs, reward, term, trunc, info = self.environment.step(action)
+            transition = Transition(obs, action, next_obs, reward, term, trunc, info)
+            transitions.append(transition)
+            if transition.terminated or transition.truncated:
                 break
-        self.reward_log.append(accumulated_reward)
-        self.episode_length_log.append(len(trajectory))
-        info = {"mango:trajectory": trajectory}
-        return accumulated_reward, info
+            obs = next_obs
+        self.reward_log.append(sum([t.reward for t in transitions]))
+        self.episode_length_log.append(len(transitions))
+        for transition in transitions:
+            self.replay_memory.push(transition)
+        return transitions
 
     def train(self):
         if self.replay_memory.can_sample():
