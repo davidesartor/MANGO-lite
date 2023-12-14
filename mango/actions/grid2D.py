@@ -30,9 +30,9 @@ class SubGridMovement(AbstractActions):
     grid_shape: tuple[int, int]
     agent_channel: Optional[int] = None
     invalid_channel: Optional[int] = None
-    p_termination: float = 0.1
+    p_termination: float = 0.05
     success_reward: float = 1.0
-    step_reward: float = -0.01
+    step_reward: float = -0.0
     failure_reward: float = -1.0
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
@@ -63,8 +63,8 @@ class SubGridMovement(AbstractActions):
         expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
 
         success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
-        not_moved = (delta_x == 0) and (delta_y == 0)
-        return not (success or not_moved)
+        moved = (delta_x != 0) or (delta_y != 0)
+        return moved and not success
 
     def reward(self, comand: ActType, transition: Transition) -> float:
         delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
@@ -84,7 +84,7 @@ class SubGridMovement(AbstractActions):
         # equivalent to setting the qvalues to 0.5/gamma
         mango_term, mango_trunc = self.beta(comand, transition)
         if mango_term and not transition.terminated:
-            reward += self.success_reward / 2
+            reward += self.success_reward / 4
         return reward
 
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:

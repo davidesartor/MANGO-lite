@@ -28,7 +28,7 @@ def make_env(map_scale: int, p_frozen: float | None = None):
     return env
 
 
-def abstract_actions(map_scale: int, cell_scales: list[int], gamma: float):
+def abstract_actions(map_scale: int, cell_scales: list[int]):
     return [
         grid2D.SubGridMovement(
             cell_shape=(2**cell_scale, 2**cell_scale),
@@ -57,18 +57,14 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
     )
 
 
-def make_mango_agent(
-    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, gamma_options: float = 0.95
-):
-    cell_scales = list(range(1, 2))  # list(range(1, map_scale))
+def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
+    cell_scales = list(range(1, map_scale))  # list(range(1, 2))
     mango_agent = Mango(
         environment=env,
-        abstract_actions=abstract_actions(map_scale, cell_scales, gamma_options),
+        abstract_actions=abstract_actions(map_scale, cell_scales),
         policy_cls=DQNetPolicy,
         policy_params=dict(lr=lr, gamma=gamma, net_params=net_params(map_scale)),
-        dynamic_policy_params=[
-            dynamic_policy_params(scale, lr, gamma_options) for scale in cell_scales
-        ],
+        dynamic_policy_params=[dynamic_policy_params(scale, lr, gamma) for scale in cell_scales],
     )
     mango_agent.reset()
     return mango_agent

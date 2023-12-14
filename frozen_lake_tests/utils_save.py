@@ -4,8 +4,8 @@ from typing import Any
 
 def path_to_save_dir(map_scale: int, p_frozen: float | None = None):
     if p_frozen is None:
-        return f"results/{2**map_scale}x{2**map_scale}_PREDEFINED/"
-    return f"results/{2**map_scale}x{2**map_scale}_RANDOM_p={int(p_frozen*100)}%/"
+        return f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}_PREDEFINED/"
+    return f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}_RANDOM_p={int(p_frozen*100)}%/"
 
 
 def save_to_file(
