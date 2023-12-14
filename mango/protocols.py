@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Protocol, NamedTuple, Any
+from typing import Protocol, NamedTuple, Any, Sequence
 import numpy as np
 import numpy.typing as npt
 import torch
@@ -21,16 +21,6 @@ class Transition(NamedTuple):
     terminated: bool
     truncated: bool
     info: dict[str, Any]
-
-
-class TensorTransitionLists(NamedTuple):
-    start_obs: torch.Tensor
-    action: torch.Tensor
-    next_obs: torch.Tensor
-    reward: torch.Tensor
-    terminated: torch.Tensor
-    truncated: torch.Tensor
-    info: list[dict[str, Any]]
 
 
 class TrainInfo(NamedTuple):
@@ -55,7 +45,7 @@ class Policy(Protocol):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
-    def train(self, transitions: TensorTransitionLists) -> TrainInfo:
+    def train(self, transitions: list[Transition]) -> TrainInfo:
         ...
 
     @classmethod
@@ -67,7 +57,7 @@ class DynamicPolicy(Protocol):
     def get_action(self, comand: ActType, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
-    def train(self, comand: ActType, transitions: TensorTransitionLists) -> TrainInfo:
+    def train(self, comand: ActType, transitions: list[Transition]) -> TrainInfo:
         ...
 
     @classmethod

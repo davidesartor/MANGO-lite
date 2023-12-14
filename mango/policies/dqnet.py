@@ -1,11 +1,25 @@
-from dataclasses import InitVar, dataclass, field
-from typing import Any
+from typing import Any, Sequence
 import numpy as np
 import torch
 
 from mango import spaces
-from mango.protocols import ActType, ObsType, TensorTransitionLists, TrainInfo, Policy
+from mango.protocols import ActType, ObsType, TrainInfo, Policy, Transition
 from mango.neuralnetworks.networks import ConvEncoder
+
+
+def to_tensor(
+    transitions: Sequence[Transition],
+    obs_dtype=torch.get_default_dtype(),
+    action_dtype=torch.int64,
+    device=None,
+):
+    start_obs, action, next_obs, reward, terminated, truncated, info = zip(*transitions)
+    start_obs = torch.as_tensor(np.stack(start_obs), dtype=obs_dtype, device=device)
+    action = torch.as_tensor(np.array(action), dtype=action_dtype, device=device)
+    next_obs = torch.as_tensor(np.stack(next_obs), dtype=obs_dtype, device=device)
+    reward = torch.as_tensor(np.array(reward), dtype=torch.float32, device=device)
+    terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=device)
+    return start_obs, action, next_obs, reward, terminated
 
 
 class DQNetPolicy(Policy):
@@ -55,8 +69,8 @@ class DQNetPolicy(Policy):
             qvals = qvals.squeeze(0)
         return qvals
 
-    def train(self, transitions: TensorTransitionLists) -> TrainInfo:
-        if not transitions:
+    def train(self, transitions: Sequence[Transition]) -> TrainInfo:
+        if len(transitions) == 0:
             raise ValueError("transitions list cannot be empty")
         self.net.train()
         self.target_net.train()
@@ -77,19 +91,9 @@ class DQNetPolicy(Policy):
         # self.ema_model = torch.optim.swa_utils.AveragedModel(self.net)
         # self.ema_model.update_parameters(self.net)
 
-    def temporal_difference(self, transitions: TensorTransitionLists) -> torch.Tensor:
+    def temporal_difference(self, transitions: Sequence[Transition]) -> torch.Tensor:
         # unpack sequence of transitions into sequence of its components
-        start_obs = transitions.start_obs.to(dtype=torch.get_default_dtype(), device=self.device)
-        actions = transitions.action.to(dtype=torch.int64, device=self.device)
-        next_obs = transitions.next_obs.to(dtype=torch.get_default_dtype(), device=self.device)
-        rewards = transitions.reward.to(dtype=torch.get_default_dtype(), device=self.device)
-        terminated = transitions.terminated.to(dtype=torch.bool, device=self.device)
-        truncated = transitions.truncated.to(dtype=torch.bool, device=self.device)
-
-        terminated_option = np.array([i.get("mango:terminated", False) for i in transitions.info])
-        truncated_option = np.array([i.get("mango:truncated", False) for i in transitions.info])
-        terminated_option = torch.as_tensor(terminated_option, dtype=torch.bool, device=self.device)
-        truncated_option = torch.as_tensor(truncated_option, dtype=torch.bool, device=self.device)
+        start_obs, actions, next_obs, rewards, term = to_tensor(transitions, device=self.device)
 
         # double DQN - use qnet to select best action, use target_net to evaluate it
         qval_start: torch.Tensor = self.net(start_obs)
@@ -98,10 +102,5 @@ class DQNetPolicy(Policy):
             qval_next: torch.Tensor = self.net(next_obs)
             best_next_action = qval_next.argmax(dim=1, keepdim=True)
             best_qval_next = torch.gather(self.target_net(next_obs), 1, best_next_action).squeeze(1)
-
-            # mango specific termination qvals
-            best_qval_next[terminated_option] = 0.5 * 1.0 / self.gamma
-            best_qval_next[truncated_option] = 0.5 * 1.0 / self.gamma
-            best_qval_next[terminated] = 0.0
-
+            best_qval_next[term] = 0.0
         return qval_sampled_action - rewards - self.gamma * best_qval_next

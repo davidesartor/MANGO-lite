@@ -3,7 +3,7 @@ from typing import Any, Callable, Optional
 import numpy as np
 import numpy.typing as npt
 import torch
-from mango.protocols import AbstractActions, ActType, TensorTransitionLists, Transition
+from mango.protocols import AbstractActions, ActType, Transition
 
 
 @dataclass(eq=False, slots=True, repr=True)
@@ -54,6 +54,7 @@ class TransitionTransform:
     comand: ActType
 
     def __call__(self, transition: Transition) -> Transition:
+        info = {}
         return transition._replace(
             start_obs=self.abstract_actions.mask(self.comand, transition.start_obs),
             next_obs=self.abstract_actions.mask(self.comand, transition.next_obs),
@@ -90,7 +91,7 @@ class ExperienceReplay:
         idx = self.memory.push(transition)
         self.priorities[idx] = np.max(self.priorities) or 1.0
 
-    def sample(self, quantity: Optional[int] = None) -> TensorTransitionLists:
+    def sample(self, quantity: Optional[int] = None) -> list[Transition]:
         if not self.can_sample(quantity):
             raise ValueError("Not enough samples to sample from")
 
@@ -98,16 +99,4 @@ class ExperienceReplay:
         self.last_sampled = np.random.choice(
             len(sample_prob), size=(quantity or self.batch_size), p=sample_prob
         )
-        start_obs, action, next_obs, reward, terminated, truncated, info = zip(
-            *self.memory[self.last_sampled]
-        )
-        start_obs = torch.as_tensor(np.stack(start_obs), dtype=torch.get_default_dtype())
-        action = torch.as_tensor(np.array(action), dtype=torch.int64)
-        next_obs = torch.as_tensor(np.stack(next_obs), dtype=torch.get_default_dtype())
-        reward = torch.as_tensor(np.array(reward), dtype=torch.float32)
-        terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool)
-        truncated = torch.as_tensor(np.array(truncated), dtype=torch.bool)
-        info = list(info)
-        return TensorTransitionLists(
-            start_obs, action, next_obs, reward, terminated, truncated, info
-        )
+        return self.memory[self.last_sampled]
