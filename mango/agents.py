@@ -23,9 +23,8 @@ class Agent:
         while episode_length is None or len(transitions) < episode_length:
             action = self.policy.get_action(obs, randomness)
             next_obs, reward, term, trunc, info = self.environment.step(action)
-            transition = Transition(obs, action, next_obs, reward, term, trunc, info)
-            transitions.append(transition)
-            if transition.terminated or transition.truncated:
+            transitions.append(Transition(obs, action, next_obs, reward, term, trunc, info))
+            if term or trunc:
                 break
             obs = next_obs
         self.reward_log.append(sum([t.reward for t in transitions]))

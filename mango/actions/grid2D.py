@@ -32,6 +32,7 @@ class SubGridMovement(AbstractActions):
     invalid_channel: Optional[int] = None
     p_termination: float = 0.1
     success_reward: float = 1.0
+    step_reward: float = -0.01
     failure_reward: float = -1.0
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
@@ -44,36 +45,41 @@ class SubGridMovement(AbstractActions):
             y, x = obs
         return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
 
-    def beta(self, action: ActType, transition: Transition) -> tuple[bool, bool]:
-        start_y, start_x = self.obs2coord(transition.start_obs)
-        next_y, next_x = self.obs2coord(transition.next_obs)
-        if start_y != next_y or start_x != next_x:
+    def deltayx(self, start_obs: ObsType, next_obs: ObsType) -> tuple[int, int]:
+        start_y, start_x = self.obs2coord(start_obs)
+        next_y, next_x = self.obs2coord(next_obs)
+        return next_y - start_y, next_x - start_x
+
+    def beta(self, comand: ActType, transition: Transition) -> tuple[bool, bool]:
+        delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
+        if not (delta_x == 0 and delta_y == 0):
             return True, False
         if transition.action == Actions.TASK:
             return True, False
         return False, random.random() < self.p_termination
 
-    def reward(self, action: ActType, transition: Transition) -> float:
-        if action == Actions.TASK:
-            return transition.reward
+    def has_failed(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
+        delta_y, delta_x = self.deltayx(start_obs, next_obs)
+        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
+        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
+        not_moved = (delta_x == 0) and (delta_y == 0)
+        return success or not_moved
 
-        start_y, start_x = self.obs2coord(transition.start_obs)
-        next_y, next_x = self.obs2coord(transition.next_obs)
-        delta_y, delta_x = Actions.to_delta(Actions(int(action)))
-        next_y_expected, next_x_expected = start_y + delta_y, start_x + delta_x
-
-        if next_y == next_y_expected and next_x == next_x_expected:
-            intrinsic_reward = self.success_reward
-        elif next_y == start_y and next_x == start_x:
-            intrinsic_reward = 0.0
+    def reward(self, comand: ActType, transition: Transition) -> float:
+        delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
+        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
+        if (delta_y == expected_delta_y) and (delta_x == expected_delta_x):
+            reward = transition.reward if comand == Actions.TASK else self.success_reward
+        elif (delta_x == 0) and (delta_y == 0):
+            reward = self.step_reward
         else:
-            intrinsic_reward = self.failure_reward
-
+            reward = self.failure_reward
         # trick to decouple the training of policy,
         # equivalent to setting the qvalues to 0.5/gamma
-        if transition.info["mango:terminated"]:
-            intrinsic_reward += self.success_reward / 2
-        return intrinsic_reward
+        mango_term, mango_trunc = self.beta(comand, transition)
+        if mango_term and not transition.terminated:
+            reward += self.success_reward / 2
+        return reward
 
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         if self.agent_channel is None:

@@ -54,11 +54,13 @@ class TransitionTransform:
     comand: ActType
 
     def __call__(self, transition: Transition) -> Transition:
-        info = {}
+        mango_term, mango_trunc = self.abstract_actions.beta(self.comand, transition)
         return transition._replace(
             start_obs=self.abstract_actions.mask(self.comand, transition.start_obs),
             next_obs=self.abstract_actions.mask(self.comand, transition.next_obs),
             reward=self.abstract_actions.reward(self.comand, transition),
+            terminated=transition.terminated or mango_term,
+            truncated=transition.truncated or mango_trunc,
         )
 
 

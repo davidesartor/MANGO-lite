@@ -60,7 +60,7 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
 def make_mango_agent(
     env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, gamma_options: float = 0.95
 ):
-    cell_scales = list(range(1, map_scale))
+    cell_scales = list(range(1, 2))  # list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales, gamma_options),

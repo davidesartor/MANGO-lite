@@ -20,7 +20,7 @@ class Transition(NamedTuple):
     reward: float
     terminated: bool
     truncated: bool
-    info: dict[str, Any]
+    info: dict[str, Any] = {}
 
 
 class TrainInfo(NamedTuple):
@@ -34,10 +34,13 @@ class AbstractActions(Protocol):
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         ...
 
-    def beta(self, action: ActType, transition: Transition) -> tuple[bool, bool]:
+    def beta(self, comand: ActType, transition: Transition) -> tuple[bool, bool]:
         ...
 
-    def reward(self, action: ActType, transition: Transition) -> float:
+    def reward(self, comand: ActType, transition: Transition) -> float:
+        ...
+
+    def has_failed(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
         ...
 
 

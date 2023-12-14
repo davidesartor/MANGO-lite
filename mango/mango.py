@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, NamedTuple
+from itertools import chain
 
 from . import spaces, utils
 from .protocols import Environment, AbstractActions, DynamicPolicy, Policy
@@ -8,7 +9,30 @@ from .policies.experiencereplay import ExperienceReplay, TransitionTransform
 from .policies.policymapper import PolicyMapper
 
 
-class MangoEnv(Environment):
+class OptionTransition(NamedTuple):
+    trajectory: list[ObsType]
+    rewards: list[float]
+    comand: ActType
+    option_failed: bool
+    option_terminated: bool
+    option_truncated: bool
+    episode_terminated: bool
+    episode_truncated: bool
+
+    @property
+    def transition(self) -> Transition:
+        return Transition(
+            self.trajectory[0],
+            self.comand,
+            self.trajectory[-1],
+            sum(self.rewards),
+            self.episode_terminated,
+            self.episode_truncated,
+            {},
+        )
+
+
+class MangoEnv:
     def __init__(self, environment: Environment) -> None:
         self.environment = environment
 
@@ -20,20 +44,29 @@ class MangoEnv(Environment):
     def observation_space(self) -> spaces.Space:
         return self.environment.observation_space
 
-    def step(self, action: ActType, obs: ObsType) -> tuple[ObsType, float, bool, bool, dict]:
-        if action in self.environment.action_space:
-            next_obs, reward, term, trunc, info = self.environment.step(action)
+    def step(self, comand: ActType, randomness=0.0) -> OptionTransition:
+        trajectory = [self.obs]
+        if comand in self.environment.action_space:
+            self.obs, reward, term, trunc, info = self.environment.step(comand)
         else:
-            next_obs, reward, term, trunc, info = obs, 0.0, False, False, {}
-        info["mango:trajectory"] = [obs, next_obs]
-        info["mango:terminated"] = False
-        info["mango:truncated"] = False
-        return next_obs, float(reward), term, trunc, info
+            reward, term, trunc, info = 0.0, False, False, {}
+        trajectory.append(self.obs)
+        return OptionTransition(
+            trajectory=trajectory,
+            rewards=[reward],
+            comand=comand,
+            option_failed=False,
+            option_terminated=True,
+            option_truncated=False,
+            episode_terminated=term,
+            episode_truncated=trunc,
+        )
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
-        return self.environment.reset(seed=seed, options=options)
+        self.obs, info = self.environment.reset(seed=seed, options=options)
+        return self.obs, info
 
     def __repr__(self) -> str:
         return utils.torch_style_repr(
@@ -48,7 +81,6 @@ class MangoLayer(MangoEnv):
         abs_actions: AbstractActions,
         dynamic_policy_cls: type[DynamicPolicy],
         dynamic_policy_params: dict[str, Any],
-        randomness: float = 0.0,
     ):
         self.lower_layer = lower_layer
         self.abs_actions = abs_actions
@@ -57,7 +89,6 @@ class MangoLayer(MangoEnv):
             action_space=self.lower_layer.action_space,
             **dynamic_policy_params,
         )
-        self.set_randomness(randomness)
         self.reset(options={"replay_memory": True, "logs": True})
 
     @property
@@ -68,38 +99,41 @@ class MangoLayer(MangoEnv):
     def observation_space(self) -> spaces.Space:
         return self.lower_layer.observation_space
 
-    def set_randomness(self, randomness: float):
-        self.randomness = randomness
+    @property
+    def obs(self) -> ObsType:
+        return self.lower_layer.obs
 
-    def step(self, action: ActType, obs: ObsType) -> tuple[ObsType, float, bool, bool, dict]:
-        trajectory = [obs]
-        accumulated_reward = 0.0
+    def step(self, comand: ActType, randomness=0.0) -> OptionTransition:
+        trajectory = [self.obs]
+        rewards = []
         while True:
-            masked_obs = self.abs_actions.mask(action, obs)
-            lower_action = self.policy.get_action(
-                comand=action, obs=masked_obs, randomness=self.randomness
-            )
-            next_obs, reward, term, trunc, info = self.lower_layer.step(
-                action=lower_action, obs=obs
-            )
-            transition = Transition(obs, lower_action, next_obs, reward, term, trunc, info)
-            mango_term, mango_trunc = self.abs_actions.beta(action, transition)
-            info["mango:terminated"], info["mango:truncated"] = mango_term, mango_trunc
-            for replay_memory in self.replay_memory.values():
-                replay_memory.push(transition)
-            # self.replay_memory[action].push(transition)
-            trajectory += info["mango:trajectory"][1:]
-            obs = next_obs
-            accumulated_reward += reward
+            obs_masked = self.abs_actions.mask(comand, self.obs)
+            action = self.policy.get_action(comand, obs_masked, randomness)
+            transition = self.lower_layer.step(action, randomness)
+
+            trajectory += transition.trajectory[1:]
+            rewards += transition.rewards
+
+            if not transition.option_failed:
+                for replay_memory in self.replay_memory.values():
+                    replay_memory.push(transition.transition)
+
+            term, trunc = transition.episode_terminated, transition.episode_truncated
+            mango_term, mango_trunc = self.abs_actions.beta(comand, transition.transition)
             if term or trunc or mango_term or mango_trunc:
                 break
 
-        info.update({"mango:trajectory": trajectory})
+        has_failed = self.abs_actions.has_failed(comand, trajectory[0], trajectory[-1])
+        option_resuts = OptionTransition(
+            trajectory, rewards, comand, has_failed, mango_term, mango_trunc, term, trunc
+        )
+
         if mango_term or term or trunc:
-            intrinsic_reward = self.abs_actions.reward(action, transition)
-            self.intrinsic_reward_log[action].append(intrinsic_reward)
+            intrinsic_reward = self.abs_actions.reward(comand, option_resuts.transition)
+            self.intrinsic_reward_log[comand].append(intrinsic_reward)
             self.episode_length_log.append(len(trajectory))
-        return obs, accumulated_reward, term, trunc, info
+
+        return option_resuts
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -166,33 +200,36 @@ class Mango(MangoEnv):
     def layers(self) -> tuple[MangoEnv | MangoLayer, ...]:
         return (self.environment, *self.abstract_layers)
 
-    def step(self, obs: ObsType, randomness=0.0) -> tuple[ObsType, float, bool, bool, dict]:
-        action = self.policy.get_action(obs, randomness)
-        next_obs, reward, term, trunc, info = self.layers[-1].step(action, obs)
-        info["mango:terminated"] = info["mango:terminated"] = False
-        self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
-        return next_obs, reward, term, trunc, info
+    @property
+    def obs(self) -> ObsType:
+        return self.environment.obs
 
     def run_episode(
         self,
         randomness: float = 0.0,
         episode_length: Optional[int] = None,
-    ) -> tuple[float, dict]:
-        obs, info = self.environment.reset()
-        accumulated_reward = 0.0
-        trajectory = [obs]
-        while len(trajectory) < episode_length or episode_length is None:
-            obs, reward, term, trunc, info = self.step(obs, randomness=randomness)
-            accumulated_reward += reward
-            trajectory += info["mango:trajectory"][1:]
-            if term or trunc:
-                break
-        info.update({"mango:trajectory": trajectory})
-        self.reward_log.append(accumulated_reward)
-        self.episode_length_log.append(len(info["mango:trajectory"]))
-        return accumulated_reward, info
+    ) -> tuple[list[ObsType], list[float]]:
+        self.environment.reset()
+        trajectory = [self.obs]
+        rewards = []
+        while episode_length is None or len(trajectory) < episode_length:
+            action = self.policy.get_action(self.obs, randomness)
+            transition = self.layers[-1].step(action, randomness)
 
-    def train(self):
+            self.replay_memory.push(transition.transition)
+            trajectory += transition.trajectory[1:]
+            rewards += transition.rewards
+
+            if transition.episode_truncated or transition.episode_terminated:
+                break
+        self.reward_log.append(sum(rewards))
+        self.episode_length_log.append(len(trajectory))
+        return trajectory, rewards
+
+    def train(self, all_layers=False):
+        if all_layers:
+            for layer in self.abstract_layers:
+                layer.train()
         if self.replay_memory.can_sample():
             train_info = self.policy.train(transitions=self.replay_memory.sample())
             self.replay_memory.update_priorities_last_sampled(train_info.td)
