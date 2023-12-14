@@ -67,7 +67,7 @@ class TransitionTransform:
 @dataclass(eq=False, slots=True, repr=True)
 class ExperienceReplay:
     batch_size: int = 64
-    capacity: int = 1024 * 16
+    capacity: int = 1024 * 8
     alpha: float = 0.6
     transform: Optional[Callable[[Transition], Transition]] = None
     memory: CircularBuffer = field(init=False)
