@@ -61,19 +61,25 @@ class SubGridMovement(AbstractActions):
     def has_failed(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
         delta_y, delta_x = self.deltayx(start_obs, next_obs)
         expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
+
         success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
         not_moved = (delta_x == 0) and (delta_y == 0)
-        return success or not_moved
+        return not (success or not_moved)
 
     def reward(self, comand: ActType, transition: Transition) -> float:
         delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
         expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
+
         if (delta_y == expected_delta_y) and (delta_x == expected_delta_x):
-            reward = transition.reward if comand == Actions.TASK else self.success_reward
+            if comand == Actions.TASK:
+                reward = transition.reward
+            else:
+                reward = self.success_reward
         elif (delta_x == 0) and (delta_y == 0):
             reward = self.step_reward
         else:
             reward = self.failure_reward
+
         # trick to decouple the training of policy,
         # equivalent to setting the qvalues to 0.5/gamma
         mango_term, mango_trunc = self.beta(comand, transition)
