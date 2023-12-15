@@ -7,7 +7,8 @@ import warnings
 
 @numba.njit
 def sample_position_in(
-    region: npt.NDArray[np.bool_], avoid: Optional[Sequence[tuple[int, int]]] = None
+    region: npt.NDArray[np.bool_],
+    avoid: Optional[Sequence[tuple[int, int]]] = None,
 ) -> tuple[int, int]:
     if avoid is not None:
         for r, c in avoid:
@@ -39,7 +40,9 @@ def reachable_from(
 
 @numba.njit
 def random_board(
-    shape: tuple[int, int], p: float, contains: Optional[Sequence[tuple[int, int]]] = None
+    shape: tuple[int, int],
+    p: float,
+    contains: Optional[Sequence[tuple[int, int]]] = None,
 ) -> npt.NDArray[np.bool_]:
     frozen = np.zeros(shape, dtype=np.bool_)
     need_to_connect = np.zeros(shape, dtype=np.bool_)
@@ -52,7 +55,7 @@ def random_board(
         start[sample_position_in(np.ones(shape, dtype=np.bool_))] = True
 
     connected = start.copy()
-    frozen = np.random.random_sample(shape) < p
+    frozen = np.random.random(shape) < p
     connected = reachable_from(connected, frozen | connected | need_to_connect)
     while True:
         if (

@@ -2,10 +2,11 @@ import pickle
 from typing import Any
 
 
-def path_to_save_dir(map_scale: int, p_frozen: float | None = None):
+def path_to_save_dir(map_scale: int, p_frozen: float | None = None, use_mango: bool = False):
+    agent = "mango_agent" if use_mango else "normal_agent"
     if p_frozen is None:
-        return f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}_PREDEFINED/"
-    return f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}_RANDOM_p={int(p_frozen*100)}%/"
+        return f"frozen_lake_tests/results/{agent}/{2**map_scale}x{2**map_scale}_PREDEFINED/"
+    return f"frozen_lake_tests/results/{agent}/{2**map_scale}x{2**map_scale}_RANDOM_p={int(p_frozen*100)}%/"
 
 
 def save_to_file(

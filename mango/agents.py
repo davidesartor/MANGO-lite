@@ -17,21 +17,22 @@ class Agent:
         self,
         randomness: float = 0.0,
         episode_length: Optional[int] = None,
-    ) -> list[Transition]:
+    ) -> tuple[list[ObsType], list[float]]:
         obs, info = self.environment.reset()
-        transitions = []
-        while episode_length is None or len(transitions) < episode_length:
+        trajectory = [obs]
+        rewards = []
+        while episode_length is None or len(trajectory) < episode_length:
             action = self.policy.get_action(obs, randomness)
             next_obs, reward, term, trunc, info = self.environment.step(action)
-            transitions.append(Transition(obs, action, next_obs, reward, term, trunc, info))
+            self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
+            trajectory.append(next_obs)
+            rewards.append(reward)
             if term or trunc:
                 break
             obs = next_obs
-        self.reward_log.append(sum([t.reward for t in transitions]))
-        self.episode_length_log.append(len(transitions))
-        for transition in transitions:
-            self.replay_memory.push(transition)
-        return transitions
+        self.reward_log.append(sum(rewards))
+        self.episode_length_log.append(len(trajectory))
+        return trajectory, rewards
 
     def train(self):
         if self.replay_memory.can_sample():

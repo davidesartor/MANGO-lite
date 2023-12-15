@@ -3,13 +3,19 @@ import sys
 sys.path.append("..")
 from typing import Any
 import torch
+import numpy as np
 from mango.policies.dqnet import DQNetPolicy
 from mango.environments import frozen_lake
 from mango.actions import grid2D
 from mango import Mango, Agent
 
 
-def env_params(map_scale: int, p_frozen: float | None = None):
+def set_global_rng(seed: int):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+
+def env_params(map_scale: int, p_frozen: float | None = None) -> dict[str, Any]:
     if p_frozen is None:
         return dict(map_name=f"{2**map_scale}x{2**map_scale}")
     return dict(
@@ -22,8 +28,9 @@ def env_params(map_scale: int, p_frozen: float | None = None):
 
 
 def make_env(map_scale: int, p_frozen: float | None = None):
-    env = frozen_lake.CustomFrozenLakeEnv(**env_params(map_scale, p_frozen))  # type: ignore
-    env = frozen_lake.wrappers.ReInitOnReset(env, **env_params(map_scale, p_frozen))
+    params = env_params(map_scale, p_frozen)
+    env = frozen_lake.CustomFrozenLakeEnv(**params)
+    env = frozen_lake.wrappers.ReInitOnReset(env, **params)
     env = frozen_lake.wrappers.TensorObservation(env, one_hot=True)
     return env
 
@@ -40,7 +47,7 @@ def abstract_actions(map_scale: int, cell_scales: list[int]):
     ]
 
 
-def net_params(map_scale: int):
+def net_params(map_scale: int) -> dict[str, Any]:
     map_scale = max((1, map_scale))
     repeats = 2 * map_scale - 1
     return dict(
@@ -50,11 +57,12 @@ def net_params(map_scale: int):
     )
 
 
+def policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, Any]:
+    return dict(lr=lr, gamma=gamma, net_params=net_params(map_scale))
+
+
 def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, Any]:
-    return dict(
-        policy_cls=DQNetPolicy,
-        policy_params=dict(lr=lr, gamma=gamma, net_params=net_params(map_scale)),
-    )
+    return dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_scale, lr, gamma))
 
 
 def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
@@ -63,7 +71,7 @@ def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95)
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales),
         policy_cls=DQNetPolicy,
-        policy_params=dict(lr=lr, gamma=gamma, net_params=net_params(map_scale)),
+        policy_params=policy_params(map_scale, lr, gamma),
         dynamic_policy_params=[dynamic_policy_params(scale, lr, gamma) for scale in cell_scales],
     )
     mango_agent.reset()
@@ -73,7 +81,8 @@ def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95)
 def make_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
     agent = Agent(
         environment=env,
-        **dynamic_policy_params(map_scale, lr, gamma),
+        policy_cls=DQNetPolicy,
+        policy_params=policy_params(map_scale, lr, gamma),
     )
     agent.reset()
     return agent

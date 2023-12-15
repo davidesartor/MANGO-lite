@@ -1,7 +1,5 @@
 from __future__ import annotations
 from typing import Any, Optional, Sequence, NamedTuple
-from itertools import chain
-
 from . import spaces, utils
 from .protocols import Environment, AbstractActions, DynamicPolicy, Policy
 from .protocols import ObsType, ActType, Transition
@@ -38,7 +36,7 @@ class MangoEnv:
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(self.environment.action_space.n + 1)
+        return spaces.Discrete(int(self.environment.action_space.n) + 1)
 
     @property
     def observation_space(self) -> spaces.Space:
@@ -135,6 +133,19 @@ class MangoLayer(MangoEnv):
 
         return option_resuts
 
+    def train(self, action: Optional[ActType | Sequence[ActType]] = None):
+        if action is None:
+            action = [act for act in self.action_space]
+        to_train = action if isinstance(action, Sequence) else [action]
+        for action in to_train:
+            if self.replay_memory[action].can_sample():
+                train_info = self.policy.train(
+                    comand=action,
+                    transitions=self.replay_memory[action].sample(),
+                )
+                self.replay_memory[action].update_priorities_last_sampled(train_info.td)
+                self.train_loss_log[action].append(train_info.loss)
+
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
     ) -> tuple[ObsType, dict]:
@@ -149,19 +160,6 @@ class MangoLayer(MangoEnv):
                 self.train_loss_log = tuple([] for _ in self.action_space)
                 self.episode_length_log = []
         return self.lower_layer.reset(seed=seed, options=options)
-
-    def train(self, action: Optional[ActType | Sequence[ActType]] = None):
-        if action is None:
-            action = [act for act in self.action_space]
-        to_train = action if isinstance(action, Sequence) else [action]
-        for action in to_train:
-            if self.replay_memory[action].can_sample():
-                train_info = self.policy.train(
-                    comand=action,
-                    transitions=self.replay_memory[action].sample(),
-                )
-                self.replay_memory[action].update_priorities_last_sampled(train_info.td)
-                self.train_loss_log[action].append(train_info.loss)
 
     def __repr__(self) -> str:
         return utils.torch_style_repr(
@@ -216,7 +214,8 @@ class Mango(MangoEnv):
             action = self.policy.get_action(self.obs, randomness)
             transition = self.layers[-1].step(action, randomness)
 
-            self.replay_memory.push(transition.transition)
+            if not transition.option_failed:
+                self.replay_memory.push(transition.transition)
             trajectory += transition.trajectory[1:]
             rewards += transition.rewards
 
