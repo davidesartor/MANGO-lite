@@ -18,6 +18,18 @@ class OptionTransition(NamedTuple):
     episode_truncated: bool
 
     @property
+    def all_transitions(self) -> list[Transition]:
+        rewards = [sum(self.rewards[i:]) for i in range(len(self.rewards))]
+        starts = self.trajectory[:-1]
+        end_obs = self.trajectory[-1]
+        term, trunc = self.episode_terminated, self.episode_truncated
+        transitions = [
+            Transition(start_obs, self.comand, end_obs, reward, term, trunc)
+            for start_obs, reward in zip(starts, rewards)
+        ]
+        return transitions
+
+    @property
     def transition(self) -> Transition:
         return Transition(
             self.trajectory[0],
@@ -26,7 +38,6 @@ class OptionTransition(NamedTuple):
             sum(self.rewards),
             self.episode_terminated,
             self.episode_truncated,
-            {},
         )
 
 
@@ -114,7 +125,7 @@ class MangoLayer(MangoEnv):
 
             if not transition.option_failed:
                 for replay_memory in self.replay_memory.values():
-                    replay_memory.push(transition.transition)
+                    replay_memory.extend(transition.all_transitions)
 
             term, trunc = transition.episode_terminated, transition.episode_truncated
             mango_term, mango_trunc = self.abs_actions.beta(comand, transition.transition)
@@ -215,7 +226,7 @@ class Mango(MangoEnv):
             transition = self.layers[-1].step(action, randomness)
 
             if not transition.option_failed:
-                self.replay_memory.push(transition.transition)
+                self.replay_memory.extend(transition.all_transitions)
             trajectory += transition.trajectory[1:]
             rewards += transition.rewards
 

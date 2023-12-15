@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-
 from mango.actions import grid2D
 
 

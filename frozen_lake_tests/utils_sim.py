@@ -1,21 +1,14 @@
-import sys
-
-sys.path.append("..")
-from typing import Any
+from typing import Any, Optional
 import torch
-import numpy as np
 from mango.policies.dqnet import DQNetPolicy
 from mango.environments import frozen_lake
 from mango.actions import grid2D
 from mango import Mango, Agent
 
 
-def set_global_rng(seed: int):
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-
-
-def env_params(map_scale: int, p_frozen: float | None = None) -> dict[str, Any]:
+def env_params(
+    map_scale: int, p_frozen: float | None = None, seed: Optional[int] = None
+) -> dict[str, Any]:
     if p_frozen is None:
         return dict(map_name=f"{2**map_scale}x{2**map_scale}")
     return dict(
@@ -24,11 +17,12 @@ def env_params(map_scale: int, p_frozen: float | None = None) -> dict[str, Any]:
         shape=(2**map_scale, 2**map_scale),
         goal_pos=[(0, 0), (-1, 0), (-1, -1), (0, -1)],
         # start_pos=[(0, 0), (-1, 0), (-1, -1), (0, -1)],
+        seed=seed,
     )
 
 
-def make_env(map_scale: int, p_frozen: float | None = None):
-    params = env_params(map_scale, p_frozen)
+def make_env(map_scale: int, p_frozen: float | None = None, seed: Optional[int] = None):
+    params = env_params(map_scale, p_frozen, seed)
     env = frozen_lake.CustomFrozenLakeEnv(**params)
     env = frozen_lake.wrappers.ReInitOnReset(env, **params)
     env = frozen_lake.wrappers.TensorObservation(env, one_hot=True)
@@ -66,7 +60,7 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
 
 
 def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
-    cell_scales = list(range(1, map_scale))  # list(range(1, 2))
+    cell_scales = list(range(map_scale - 1, map_scale))  # list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales),

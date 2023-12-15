@@ -9,15 +9,16 @@ import warnings
 def sample_position_in(
     region: npt.NDArray[np.bool_],
     avoid: Optional[Sequence[tuple[int, int]]] = None,
+    np_rng=np.random.default_rng(),
 ) -> tuple[int, int]:
     if avoid is not None:
         for r, c in avoid:
             region[r, c] = False
     if region.sum() == 0:
         raise ValueError("No position available")
-    r, c = np.random.randint(region.shape[0]), np.random.randint(region.shape[1])
+    r, c = np_rng.integers(0, region.shape[0]), np_rng.integers(0, region.shape[1])
     while not region[r, c]:
-        r, c = np.random.randint(region.shape[0]), np.random.randint(region.shape[1])
+        r, c = np_rng.integers(0, region.shape[0]), np_rng.integers(0, region.shape[1])
     return r, c
 
 
@@ -43,6 +44,7 @@ def random_board(
     shape: tuple[int, int],
     p: float,
     contains: Optional[Sequence[tuple[int, int]]] = None,
+    np_rng=np.random.default_rng(),
 ) -> npt.NDArray[np.bool_]:
     frozen = np.zeros(shape, dtype=np.bool_)
     need_to_connect = np.zeros(shape, dtype=np.bool_)
@@ -52,21 +54,21 @@ def random_board(
         for c in contains:
             need_to_connect[c] = True
     else:
-        start[sample_position_in(np.ones(shape, dtype=np.bool_))] = True
+        start[sample_position_in(np.ones(shape, dtype=np.bool_), np_rng=np_rng)] = True
 
     connected = start.copy()
-    frozen = np.random.random(shape) < p
+    frozen = np_rng.random(shape) < p
     connected = reachable_from(connected, frozen | connected | need_to_connect)
     while True:
         if (
             connected.sum() < (p - 0.05) * connected.size
             or (need_to_connect & ~connected).sum() > 0
         ):
-            expansion = sample_position_in(~(connected | frozen | need_to_connect))
+            expansion = sample_position_in(~(connected | frozen | need_to_connect), np_rng=np_rng)
             frozen[expansion] = True
             connected = reachable_from(connected, connected | frozen | need_to_connect)
         elif connected.sum() > (p + 0.05) * connected.size:
-            contraction = sample_position_in(connected & ~need_to_connect)
+            contraction = sample_position_in(connected & ~need_to_connect, np_rng=np_rng)
             frozen[contraction] = False
             connected = reachable_from(start, frozen | need_to_connect)
         else:
@@ -81,6 +83,7 @@ def generate_map(
     goal_pos: Sequence[tuple[int, int]] = [],
     start_anywhere=False,
     mirror=False,
+    seed: Optional[int] = None,
 ):
     if p < 0 or p > 1:
         raise ValueError("p must be in [0, 1]")
@@ -88,29 +91,31 @@ def generate_map(
     start_pos = [(r % shape[0], c % shape[1]) for r, c in start_pos]
     goal_pos = [(r % shape[0], c % shape[1]) for r, c in goal_pos]
 
+    np_rng = np.random.default_rng(seed)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if goal_pos and start_pos:
-            start_pos_idx = np.random.randint(len(start_pos))
-            goal_pos_idx = np.random.randint(len(goal_pos))
+            start_pos_idx = np_rng.integers(len(start_pos))
+            goal_pos_idx = np_rng.integers(len(goal_pos))
             while start_pos[start_pos_idx] == goal_pos[goal_pos_idx]:
-                start_pos_idx = np.random.randint(len(start_pos))
-                goal_pos_idx = np.random.randint(len(goal_pos))
+                start_pos_idx = np_rng.integers(len(start_pos))
+                goal_pos_idx = np_rng.integers(len(goal_pos))
             goal_pos = [goal_pos[goal_pos_idx]]
             start_pos = [start_pos[start_pos_idx]]
-            connected = random_board(shape, p, contains=goal_pos + start_pos)
+            connected = random_board(shape, p, contains=goal_pos + start_pos, np_rng=np_rng)
         elif start_pos and not goal_pos:
-            start_pos = [start_pos[np.random.randint(len(start_pos))]]
-            connected = random_board(shape, p, contains=start_pos)
-            goal_pos = [sample_position_in(connected, avoid=start_pos)]
+            start_pos = [start_pos[np_rng.integers(len(start_pos))]]
+            connected = random_board(shape, p, contains=start_pos, np_rng=np_rng)
+            goal_pos = [sample_position_in(connected, avoid=start_pos, np_rng=np_rng)]
         elif not start_pos and goal_pos:
-            goal_pos = [goal_pos[np.random.randint(len(goal_pos))]]
-            connected = random_board(shape, p, contains=goal_pos)
-            start_pos = [sample_position_in(connected, avoid=goal_pos)]
+            goal_pos = [goal_pos[np_rng.integers(len(goal_pos))]]
+            connected = random_board(shape, p, contains=goal_pos, np_rng=np_rng)
+            start_pos = [sample_position_in(connected, avoid=goal_pos, np_rng=np_rng)]
         else:
-            connected = random_board(shape, p, contains=None)
-            start_pos = [sample_position_in(connected)]
-            goal_pos = [sample_position_in(connected, avoid=start_pos)]
+            connected = random_board(shape, p, contains=None, np_rng=np_rng)
+            start_pos = [sample_position_in(connected, np_rng=np_rng)]
+            goal_pos = [sample_position_in(connected, avoid=start_pos, np_rng=np_rng)]
 
     desc = np.empty(shape, dtype="U1")
     desc[connected] = b"F"

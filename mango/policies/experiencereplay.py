@@ -67,7 +67,7 @@ class TransitionTransform:
 @dataclass(eq=False, slots=True, repr=True)
 class ExperienceReplay:
     batch_size: int = 64
-    capacity: int = 1024 * 8
+    capacity: int = 1024 * 16
     alpha: float = 0.6
     transform: Optional[Callable[[Transition], Transition]] = None
     memory: CircularBuffer = field(init=False)
@@ -92,6 +92,10 @@ class ExperienceReplay:
             transition = self.transform(transition)
         idx = self.memory.push(transition)
         self.priorities[idx] = np.max(self.priorities) or 1.0
+
+    def extend(self, transitions: list[Transition]) -> None:
+        for transition in transitions:
+            self.push(transition)
 
     def sample(self, quantity: Optional[int] = None) -> list[Transition]:
         if not self.can_sample(quantity):

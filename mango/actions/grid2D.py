@@ -32,14 +32,14 @@ class SubGridMovement(AbstractActions):
     invalid_channel: Optional[int] = None
     p_termination: float = 0.1
     success_reward: float = 1.0
-    step_reward: float = -0.01
+    step_reward: float = -0.0
     failure_reward: float = -1.0
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
 
     def obs2coord(self, obs: ObsType) -> tuple[int, int]:
         if self.agent_channel is not None:
-            idx = np.argmax(obs[self.agent_channel, :, :])
+            idx = int(np.argmax(obs[self.agent_channel, :, :]))
             y, x = idx // self.grid_shape[1], idx % self.grid_shape[1]
         else:
             y, x = obs

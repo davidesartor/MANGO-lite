@@ -39,11 +39,18 @@ class ReInitOnReset(FrozenLakeWrapper):
     def __init__(self, env: CustomFrozenLakeEnv, **init_kwargs):
         super().__init__(env)
         self.init_kwargs = init_kwargs
+        self.n_resets = 0
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
-        self.env.__init__(**self.init_kwargs)
+        init_kwargs = self.init_kwargs.copy()
+        if seed is not None:
+            init_kwargs.update(seed=seed)
+        elif "seed" in init_kwargs:
+            init_kwargs["seed"] = abs(hash((init_kwargs["seed"], self.n_resets)))
+        self.env.__init__(**init_kwargs)
+        self.n_resets += 1
         return self.env.reset(seed=seed, options=options)
 
 
