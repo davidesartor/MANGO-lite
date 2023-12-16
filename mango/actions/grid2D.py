@@ -51,36 +51,33 @@ class SubGridMovement(AbstractActions):
         next_y, next_x = self.obs2coord(next_obs)
         return next_y - start_y, next_x - start_x
 
-    def performed_action(self, start_obs: ObsType, next_obs: ObsType) -> bool:
-        delta_y, delta_x = self.deltayx(start_obs, next_obs)
-        return (delta_x != 0) or (delta_y != 0)
-
-    def matching_action(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
-        delta_y, delta_x = self.deltayx(start_obs, next_obs)
-        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
-        return (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
-
     def beta(self, comand: ActType, transition: Transition) -> tuple[bool, bool]:
-        if self.performed_action(transition.start_obs, transition.next_obs):
+        delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
+        if (delta_x != 0) or (delta_y != 0):
             return True, False
         if transition.action == Actions.TASK:
             return True, False
         return False, random.random() < self.p_termination
 
     def has_failed(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
-        success = self.matching_action(comand, start_obs, next_obs)
-        moved = self.performed_action(start_obs, next_obs)
+        delta_y, delta_x = self.deltayx(start_obs, next_obs)
+        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
+        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
+        moved = (delta_x != 0) or (delta_y != 0)
         return moved and not success
 
     def reward(self, comand: ActType, transition: Transition) -> float:
-        mango_term, mango_trunc = self.beta(comand, transition)
+        delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
+        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
+        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
+        moved = (delta_x != 0) or (delta_y != 0)
 
-        if self.matching_action(comand, transition.start_obs, transition.next_obs):
+        if success:
             if comand == Actions.TASK:
                 reward = transition.reward
             else:
                 reward = self.success_reward
-        elif not self.performed_action(transition.start_obs, transition.next_obs):
+        elif not moved:
             reward = self.step_reward
         else:
             reward = self.failure_reward
@@ -88,7 +85,7 @@ class SubGridMovement(AbstractActions):
         # trick to decouple the training of policy,
         # equivalent to setting the qvalues to 0.5/gamma
 
-        if mango_term and not transition.terminated:
+        if moved and not transition.terminated:
             reward += self.termination_reward
         return reward
 
