@@ -60,7 +60,6 @@ class TransitionTransform:
             next_obs=self.abstract_actions.mask(self.comand, transition.next_obs),
             reward=self.abstract_actions.reward(self.comand, transition),
             terminated=transition.terminated or mango_term,
-            truncated=transition.truncated or mango_trunc,
         )
 
 
