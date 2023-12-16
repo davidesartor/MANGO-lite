@@ -81,7 +81,6 @@ class MangoLayer(MangoEnv):
     def step(self, comand: ActType, randomness=0.0) -> OptionTransition:
         trajectory = [self.obs]
         rewards = []
-        seen_obs = [self.obs]
         while True:
             obs_masked = self.abs_actions.mask(comand, self.obs)
             action = self.policy.get_action(comand, obs_masked, randomness)
@@ -90,14 +89,12 @@ class MangoLayer(MangoEnv):
             trajectory += lower_step.trajectory[1:]
             rewards += lower_step.rewards
 
-            if lower_step.option_terminated or lower_step.episode_terminated:
+            if not lower_step.option_failed:
                 for replay_memory in self.replay_memory.values():
                     replay_memory.extend(lower_step.all_transitions())
 
             term, trunc = lower_step.episode_terminated, lower_step.episode_truncated
             mango_term, mango_trunc = self.abs_actions.beta(comand, lower_step.flatten())
-            mango_trunc = mango_trunc or any((obs == self.obs).all() for obs in seen_obs)
-            seen_obs.append(self.obs)
             if term or trunc or mango_term or mango_trunc:
                 break
 
@@ -194,7 +191,7 @@ class Mango(MangoEnv):
             action = self.policy.get_action(self.obs, randomness)
             lower_step = self.layers[-1].step(action, randomness)
 
-            if lower_step.option_terminated or lower_step.episode_terminated:
+            if not lower_step.option_failed:
                 self.replay_memory.extend(lower_step.all_transitions())
             trajectory += lower_step.trajectory[1:]
             rewards += lower_step.rewards
