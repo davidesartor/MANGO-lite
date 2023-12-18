@@ -60,7 +60,7 @@ def net_params(map_scale: int) -> dict[str, Any]:
     return dict(
         hidden_channels=[4 * 2**map_scale] * repeats,
         hidden_features=[],
-        device=torch.device("cuda") if torch.cuda.is_available() else None,
+        device=torch.device("cuda:1") if torch.cuda.is_available() else None,
     )
 
 
