@@ -6,7 +6,7 @@ import numpy as np
 # parameters for the environment
 map_scale = 2
 p_frozen = 0.8
-run_ids = [0, 1]
+run_ids = [0, 1, 2, 3, 4]
 train_normal_agent = True
 train_mango_agent = True
 
