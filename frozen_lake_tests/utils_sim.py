@@ -6,7 +6,7 @@ from mango.actions import grid2D
 from mango import Mango, Agent
 
 
-def train_params(map_scale: int, p_frozen: float | None = None) -> tuple[int, int, int]:
+def train_params(map_scale: int, p_frozen: float | None) -> tuple[int, int, int]:
     if map_scale == 2:
         N_episodes = 1000 if p_frozen is None else 10_000
     elif map_scale == 3:

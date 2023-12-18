@@ -20,13 +20,15 @@ def run_sim(run_id, use_mango=False):
         agent = utils_sim.make_agent(env, map_scale)
 
     # train loop
-    N_episodes, train_steps_per_episode, episode_length = utils_sim.train_params(map_scale)
-    randomness = np.linspace(0.0, 1.0, N_episodes)
+    N_episodes, train_steps_per_episode, episode_length = utils_sim.train_params(
+        map_scale, p_frozen
+    )
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
-    for i, r in enumerate(tqdm(randomness, desc=p_bar_descr, leave=False)):
-        if i % 2:
-            r = 0.0
-        agent.run_episode(randomness=r, episode_length=episode_length)
+    for episode_idx, randomness in enumerate(
+        tqdm(np.linspace(1.0, 0.0, N_episodes), desc=p_bar_descr, leave=False)
+    ):
+        randomness = 0.0 if episode_idx % 2 else randomness
+        agent.run_episode(randomness, episode_length)
         for _ in range(train_steps_per_episode):
             agent.train()
     return agent

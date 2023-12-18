@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 from typing import Any, Optional
 from mango.policies.experiencereplay import ExperienceReplay
 from mango.protocols import Environment, ObsType, Policy, Transition
@@ -16,12 +17,12 @@ class Agent:
     def run_episode(
         self,
         randomness: float = 0.0,
-        episode_length: Optional[int] = None,
+        episode_length=math.inf,
     ) -> tuple[list[ObsType], list[float]]:
         obs, info = self.environment.reset()
         trajectory = [obs]
         rewards = []
-        while episode_length is None or len(trajectory) < episode_length:
+        while len(trajectory) < episode_length:
             action = self.policy.get_action(obs, randomness)
             next_obs, reward, term, trunc, info = self.environment.step(action)
             self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
