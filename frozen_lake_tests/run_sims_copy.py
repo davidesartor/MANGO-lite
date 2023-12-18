@@ -3,7 +3,7 @@ import sys
 
 # parameters for the environment
 map_scale = 3
-p_frozen = None
+p_frozen = 0.8
 
 if __name__ == "__main__":
     cwd = os.getcwd()

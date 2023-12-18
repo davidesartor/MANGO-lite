@@ -50,6 +50,7 @@ class DQNetPolicy(Policy):
     def to(self, device: torch.device):
         self.net = self.net.to(device)
         self.target_net = self.target_net.to(device)
+        self.optimizer = torch.optim.RAdam(self.net.parameters(recurse=True))
         self.device = device
 
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
