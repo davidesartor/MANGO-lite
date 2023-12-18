@@ -4,9 +4,9 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_scale = 2
-p_frozen = 0.8
-run_ids = [0, 1, 2, 3, 4]
+map_scale = 3
+p_frozen = None
+run_ids = [2, 3, 4]
 train_normal_agent = True
 train_mango_agent = True
 
