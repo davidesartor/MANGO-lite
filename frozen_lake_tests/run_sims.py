@@ -5,9 +5,9 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_scale = 2
+map_scale = 3
 p_frozen = None
-device = torch.device("cuda:2")
+device = torch.device("cuda:0")
 run_ids = [0]
 train_normal_agent = True
 train_mango_agent = True
