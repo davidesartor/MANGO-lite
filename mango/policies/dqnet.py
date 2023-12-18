@@ -47,6 +47,11 @@ class DQNetPolicy(Policy):
     def make(cls, action_space: spaces.Discrete, **kwargs) -> Policy:
         return cls(action_space, **kwargs)
 
+    def to(self, device: torch.device):
+        self.net = self.net.to(device)
+        self.target_net = self.target_net.to(device)
+        self.device = device
+
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         with torch.no_grad():
             if randomness >= 1.0 - 1e-08:

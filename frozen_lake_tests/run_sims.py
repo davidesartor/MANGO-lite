@@ -1,11 +1,13 @@
 import os
 import sys
+import torch
 from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_scale = 3
-p_frozen = 0.8
+map_scale = 2
+p_frozen = None
+device = torch.device("cuda:0")
 run_ids = [0]
 train_normal_agent = True
 train_mango_agent = True
@@ -15,9 +17,9 @@ def run_sim(run_id, use_mango=False):
     # create the environment and the agent
     env = utils_sim.make_env(map_scale, p_frozen, seed=run_id)
     if use_mango:
-        agent = utils_sim.make_mango_agent(env, map_scale)
+        agent = utils_sim.make_mango_agent(env, map_scale, device=device)
     else:
-        agent = utils_sim.make_agent(env, map_scale)
+        agent = utils_sim.make_agent(env, map_scale, device=device)
 
     # train loop
     N_episodes, train_steps_per_episode, episode_length = utils_sim.train_params(

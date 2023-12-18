@@ -54,42 +54,46 @@ def abstract_actions(map_scale: int, cell_scales: list[int]):
     ]
 
 
-def net_params(map_scale: int) -> dict[str, Any]:
+def net_params(map_scale: int, device) -> dict[str, Any]:
     map_scale = max((1, map_scale))
     repeats = 2 * map_scale - 1
     return dict(
         hidden_channels=[4 * 2**map_scale] * repeats,
         hidden_features=[],
-        device=torch.device("cuda:1") if torch.cuda.is_available() else None,
+        device=device,
     )
 
 
-def policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, Any]:
-    return dict(lr=lr, gamma=gamma, net_params=net_params(map_scale))
+def policy_params(map_scale: int, lr: float, gamma: float, device) -> dict[str, Any]:
+    return dict(lr=lr, gamma=gamma, net_params=net_params(map_scale, device))
 
 
-def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, Any]:
-    return dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_scale, lr, gamma))
+def dynamic_policy_params(map_scale: int, lr: float, gamma: float, device) -> dict[str, Any]:
+    return dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_scale, lr, gamma, device))
 
 
-def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8):
+def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8, device=torch.device("cpu")):
     cell_scales = list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales),
         policy_cls=DQNetPolicy,
-        policy_params=policy_params(map_scale, lr, gamma),
-        dynamic_policy_params=[dynamic_policy_params(scale, lr, gamma) for scale in cell_scales],
+        policy_params=policy_params(map_scale, lr, gamma, device),
+        dynamic_policy_params=[
+            dynamic_policy_params(scale, lr, gamma, device) for scale in cell_scales
+        ],
     )
     mango_agent.reset()
     return mango_agent
 
 
-def make_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
+def make_agent(
+    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, device=torch.device("cpu")
+):
     agent = Agent(
         environment=env,
         policy_cls=DQNetPolicy,
-        policy_params=policy_params(map_scale, lr, gamma),
+        policy_params=policy_params(map_scale, lr, gamma, device),
     )
     agent.reset()
     return agent
