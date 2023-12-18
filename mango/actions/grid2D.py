@@ -30,11 +30,10 @@ class SubGridMovement(AbstractActions):
     grid_shape: tuple[int, int]
     agent_channel: Optional[int] = None
     invalid_channel: Optional[int] = None
-    p_termination: float = 0.1
-    success_reward: float = 1.0
-    failure_reward: float = -1.0
+    success_reward: float = 0.75
+    failure_reward: float = -0.75
     step_reward: float = -0.0
-    termination_reward: float = +0.5
+    termination_reward: float = +0.25
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
 
@@ -51,13 +50,14 @@ class SubGridMovement(AbstractActions):
         next_y, next_x = self.obs2coord(next_obs)
         return next_y - start_y, next_x - start_x
 
-    def beta(self, comand: ActType, transition: Transition) -> tuple[bool, bool]:
+    def beta(self, comand: ActType, transition: Transition) -> bool:
         delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
-        if (delta_x != 0) or (delta_y != 0):
-            return True, False
-        if transition.action == Actions.TASK:
-            return True, False
-        return False, random.random() < self.p_termination
+        moved = (delta_x != 0) or (delta_y != 0)
+        if moved or transition.action == Actions.TASK:
+            return True
+        if comand == Actions.TASK and transition.terminated:
+            return True
+        return False
 
     def has_failed(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
         delta_y, delta_x = self.deltayx(start_obs, next_obs)
@@ -69,23 +69,23 @@ class SubGridMovement(AbstractActions):
     def reward(self, comand: ActType, transition: Transition) -> float:
         delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
         expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
-        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
         moved = (delta_x != 0) or (delta_y != 0)
+        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
 
-        if success:
-            if comand == Actions.TASK:
-                reward = transition.reward
-            else:
+        if comand != Actions.TASK:
+            if success:
                 reward = self.success_reward
-        elif not moved:
-            reward = self.step_reward
+            elif not moved:
+                reward = self.step_reward
+            else:
+                reward = self.failure_reward
         else:
-            reward = self.failure_reward
+            reward = transition.reward if not moved else self.failure_reward
 
         # trick to decouple the training of policy,
-        # equivalent to setting the qvalues to 0.5/gamma
-
-        if moved and not transition.terminated:
+        # equivalent to setting qvalues[beta and not term] = termination_reward/gamma
+        beta = self.beta(comand, transition)
+        if beta and not transition.terminated:
             reward += self.termination_reward
         return reward
 

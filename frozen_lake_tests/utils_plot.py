@@ -12,10 +12,9 @@ def smooth(signal, window=0.05):
     return np.convolve(signal, window_array, mode="valid")
 
 
-def plot_mango_loss_reward(mango, gamma=0.75, layers=None, save_path=None):
+def plot_mango_agent_loss_reward(mango, save_path=None):
     plt.figure(figsize=(12, 3 * (1 + len(mango.abstract_layers))))
-    for layer_idx in layers or range(1, len(mango.abstract_layers) + 1):
-        layer = mango.abstract_layers[layer_idx - 1]
+    for layer_idx, layer in enumerate(mango.abstract_layers, start=1):
         for action in grid2D.Actions:
             plt.subplot(len(mango.abstract_layers) + 1, 3, 3 * (layer_idx - 1) + 1)
             plt.title(f"loss Layer {layer_idx}")
@@ -63,7 +62,7 @@ def plot_mango_loss_reward(mango, gamma=0.75, layers=None, save_path=None):
     plt.show()
 
 
-def plot_agent_loss_reward(agent, save_path=None):
+def plot_normal_agent_loss_reward(agent, save_path=None):
     plt.figure(figsize=(12, 3))
     plt.subplot(1, 3, 1)
     plt.title(f"loss")

@@ -6,6 +6,20 @@ from mango.actions import grid2D
 from mango import Mango, Agent
 
 
+def train_params(map_scale: int, p_frozen: float | None = None) -> tuple[int, int, int]:
+    if map_scale == 2:
+        N_episodes = 1000 if p_frozen is None else 10_000
+    elif map_scale == 3:
+        N_episodes = 5000 if p_frozen is None else 100_000
+    elif map_scale == 4:
+        N_episodes = 100_000
+    else:
+        raise ValueError(f"sim parameters not defined for map_scale={map_scale}")
+    train_steps_per_episode = 5
+    episode_length = 4**map_scale
+    return N_episodes, train_steps_per_episode, episode_length
+
+
 def env_params(
     map_scale: int, p_frozen: float | None = None, seed: Optional[int] = None
 ) -> dict[str, Any]:
@@ -16,7 +30,6 @@ def env_params(
         p=p_frozen,
         shape=(2**map_scale, 2**map_scale),
         goal_pos=[(0, 0), (-1, 0), (-1, -1), (0, -1)],
-        # start_pos=[(0, 0), (-1, 0), (-1, -1), (0, -1)],
         seed=seed,
     )
 
@@ -59,8 +72,8 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float) -> dict[str, 
     return dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_scale, lr, gamma))
 
 
-def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95):
-    cell_scales = list(range(1, map_scale))  # list(range(map_scale - 1, map_scale))
+def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8):
+    cell_scales = list(range(1, 2))  # list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales),

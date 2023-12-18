@@ -24,14 +24,13 @@ class Transition(NamedTuple):
 
 
 class OptionTransition(NamedTuple):
+    comand: ActType
     trajectory: list[ObsType]
     rewards: list[float]
-    comand: ActType
-    option_failed: bool
-    option_terminated: bool
-    option_truncated: bool
-    episode_terminated: bool
-    episode_truncated: bool
+    failed: bool
+    beta: bool
+    terminated: bool
+    truncated: bool
 
     def all_transitions(self) -> list[Transition]:
         rewards = [sum(self.rewards[i:]) for i in range(len(self.rewards))]
@@ -41,8 +40,8 @@ class OptionTransition(NamedTuple):
                 action=self.comand,
                 next_obs=self.trajectory[-1],
                 reward=reward,
-                terminated=self.episode_terminated,
-                truncated=self.episode_truncated,
+                terminated=self.terminated,
+                truncated=self.truncated,
             )
             for start_obs, reward in zip(self.trajectory[:-1], rewards)
         ]
@@ -53,8 +52,8 @@ class OptionTransition(NamedTuple):
             action=self.comand,
             next_obs=self.trajectory[-1],
             reward=sum(self.rewards),
-            terminated=self.episode_terminated,
-            truncated=self.episode_truncated,
+            terminated=self.terminated,
+            truncated=self.truncated,
         )
 
 
@@ -69,7 +68,7 @@ class AbstractActions(Protocol):
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
         ...
 
-    def beta(self, comand: ActType, transition: Transition) -> tuple[bool, bool]:
+    def beta(self, comand: ActType, transition: Transition) -> bool:
         ...
 
     def reward(self, comand: ActType, transition: Transition) -> float:

@@ -124,7 +124,7 @@ def plot_all_abstractions(mango: Mango, trajectory: list[ObsType] | list[int] = 
     plt.show()
 
 
-def plot_all_qvals(
+def plot_all_qvals_mango_agent(
     mango_agent: Mango, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
 ):
     # TODO: fix type hints, this only works for specific Mango instances
@@ -160,36 +160,13 @@ def plot_all_qvals(
             plot_qval_heatmap(policy, all_obs_list, env)
             plt.xticks([])
             plt.yticks([])
-    if save_path is not None:
-        plt.savefig(save_path, bbox_inches="tight")
-
-
-def plot_all_qvals_mango_agent(
-    mango_agent: Mango, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
-):
-    # TODO: fix type hints, this only works for specific Mango instances
-    env: FrozenLakeWrapper = mango.environment.environment  # type: ignore
-    plt.figure(figsize=((size + 2) + size, size))
-
-    plt.subplot(1, 2, 1)
-    plt.title(f"Environment")
-    plt.imshow(env.unwrapped.render())
-    plot_trajectory(trajectory, env)
-    plt.xticks([])
-    plt.yticks([])
-
-    plt.subplot(1, 2, 2)
-    plt.title(f"Qvals")
-    all_obs_list = all_observations(env)  # type: ignore
-    plot_qval_heatmap(mango_agent.policy, all_obs_list, env)  # type: ignore
-    plt.xticks([])
-    plt.yticks([])
 
     if save_path is not None:
         plt.savefig(save_path, bbox_inches="tight")
+    plt.show()
 
 
-def plot_all_qvals_agent(
+def plot_all_qvals_normal_agent(
     agent: Agent, trajectory: list[ObsType] | list[int] = [], size=3, save_path=None
 ):
     # TODO: fix type hints, this only works for specific Mango instances
@@ -212,3 +189,4 @@ def plot_all_qvals_agent(
 
     if save_path is not None:
         plt.savefig(save_path, bbox_inches="tight")
+    plt.show()
