@@ -7,9 +7,9 @@ import numpy as np
 # parameters for the environment
 map_scale = 3
 p_frozen = None
-device = torch.device("cuda:0")
-run_ids = [2]
-train_normal_agent = True
+device = torch.device("cuda:2")
+run_ids = [11]
+train_normal_agent = False
 train_mango_agent = True
 
 

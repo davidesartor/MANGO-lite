@@ -10,13 +10,13 @@ def train_params(map_scale: int, p_frozen: float | None) -> tuple[int, int, int]
     if map_scale == 2:
         N_episodes = 1000 if p_frozen is None else 10_000
     elif map_scale == 3:
-        N_episodes = 2000 if p_frozen is None else 50_000
+        N_episodes = 10000 if p_frozen is None else 50_000
     elif map_scale == 4:
-        N_episodes = 4000 if p_frozen is None else 100_000
+        N_episodes = 100000 if p_frozen is None else 100_000
     else:
         raise ValueError(f"sim parameters not defined for map_scale={map_scale}")
     train_steps_per_episode = 5
-    episode_length = 4**map_scale
+    episode_length = 2 * 4**map_scale
     return N_episodes, train_steps_per_episode, episode_length
 
 
@@ -37,7 +37,7 @@ def env_params(
 def make_env(map_scale: int, p_frozen: float | None = None, seed: Optional[int] = None):
     params = env_params(map_scale, p_frozen, seed)
     env = frozen_lake.CustomFrozenLakeEnv(**params)
-    env = frozen_lake.wrappers.ReInitOnReset(env, **params)
+    # env = frozen_lake.wrappers.ReInitOnReset(env, **params)
     env = frozen_lake.wrappers.TensorObservation(env, one_hot=True)
     return env
 
@@ -72,8 +72,8 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float, device) -> di
     return dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_scale, lr, gamma, device))
 
 
-def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.9, device=torch.device("cpu")):
-    cell_scales = list(range(2, map_scale))
+def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8, device=torch.device("cpu")):
+    cell_scales = list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales),
