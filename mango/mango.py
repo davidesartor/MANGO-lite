@@ -66,7 +66,6 @@ class MangoLayer(MangoEnv):
             action_space=self.lower_layer.action_space,
             **dynamic_policy_params,
         )
-        self.reset(options={"replay_memory": True, "logs": True})
 
     @property
     def action_space(self) -> spaces.Discrete:

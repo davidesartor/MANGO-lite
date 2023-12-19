@@ -1,13 +1,16 @@
-from typing import Any
 import pickle
 import torch
 from mango import Mango, Agent
 
 
-def path_to_save_dir(map_scale: int, p_frozen: float | None = None):
+def path_to_save_dir(map_scale: int, p_frozen: float | None, one_shot: bool):
+    path = f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}"
     if p_frozen is None:
-        return f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}_PREDEFINED/"
-    return f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}_RANDOM_p={int(p_frozen*100)}%/"
+        return path + "_PREDEFINED/"
+    path += f"_RANDOM_{int(p_frozen*100)}%"
+    if one_shot:
+        path += "_1shot"
+    return path + "/"
 
 
 def save_to_file(
