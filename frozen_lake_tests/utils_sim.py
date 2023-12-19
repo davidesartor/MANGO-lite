@@ -7,16 +7,9 @@ from mango import Mango, Agent
 
 
 def train_params(map_scale: int, p_frozen: float | None, one_shot) -> tuple[int, int, int]:
-    if map_scale == 2:
-        N_episodes = 1000 if p_frozen is None else 10_000
-    elif map_scale == 3:
-        N_episodes = 10000 if p_frozen is None else 50_000
-    elif map_scale == 4:
-        N_episodes = 10 if p_frozen is None else 10
-    else:
-        raise ValueError(f"sim parameters not defined for map_scale={map_scale}")
-    if one_shot:
-        N_episodes = 100
+    N_episodes = 10 * 10**map_scale
+    if one_shot and p_frozen is not None:
+        N_episodes *= 10
 
     train_steps_per_episode = 5
     episode_length = 2 * 4**map_scale
@@ -78,7 +71,7 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float, device) -> di
 
 
 def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8, device=torch.device("cpu")):
-    cell_scales = list(range(1, map_scale))
+    cell_scales = list(range(1, 2))  # list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
         abstract_actions=abstract_actions(map_scale, cell_scales),

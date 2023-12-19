@@ -5,11 +5,11 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_scale = 2
-p_frozen = 0.5
-one_shot = True
-device = torch.device("cuda:0")
-run_ids = [0, 1]
+map_scale = 3
+p_frozen = 0.8
+one_shot = False
+device = torch.device("cuda:2")
+run_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 train_normal_agent = True
 train_mango_agent = True
 
