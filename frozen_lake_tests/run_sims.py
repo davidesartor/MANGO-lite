@@ -8,7 +8,7 @@ import numpy as np
 map_scale = 3
 p_frozen = None
 device = torch.device("cuda:0")
-run_ids = [5]
+run_ids = [2]
 train_normal_agent = True
 train_mango_agent = True
 
@@ -48,11 +48,11 @@ if __name__ == "__main__":
         if train_normal_agent:
             normal_agent = run_sim(run_id, use_mango=False)
             utils_save.save_to_file(
-                path=dir_path + f"normal_agent_run_{run_id}.pickle", obj=normal_agent
+                path=dir_path + f"normal_agent_v2_run_{run_id}.pickle", obj=normal_agent
             )
 
         if train_mango_agent:
             mango_agent = run_sim(run_id, use_mango=True)
             utils_save.save_to_file(
-                path=dir_path + f"mango_agent_run_{run_id}.pickle", obj=mango_agent
+                path=dir_path + f"mango_agent_v2_run_{run_id}.pickle", obj=mango_agent
             )

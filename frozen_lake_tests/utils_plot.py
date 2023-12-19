@@ -47,7 +47,7 @@ def plot_mango_agent_loss_reward(mango, save_path=None):
     plt.plot(len(smooth(mango.reward_log[::2])) - 1, mango.reward_log[::2][-1], "o", color=plt.gca().lines[-1].get_color())  # type: ignore
     plt.plot(smooth(mango.reward_log[1::2]), label="evaluation")
     plt.plot(len(smooth(mango.reward_log[1::2])) - 1, mango.reward_log[1::2][-1], "o", color=plt.gca().lines[-1].get_color())  # type: ignore
-
+    plt.ylim((0, 1.05))
     plt.legend()
     plt.grid(True)
 
@@ -75,6 +75,7 @@ def plot_normal_agent_loss_reward(agent, save_path=None):
     plt.plot(len(smooth(agent.reward_log[::2])) - 1, agent.reward_log[::2][-1], "o", color=plt.gca().lines[-1].get_color())  # type: ignore
     plt.plot(smooth(agent.reward_log[1::2]), label="evaluation")
     plt.plot(len(smooth(agent.reward_log[1::2])) - 1, agent.reward_log[1::2][-1], "o", color=plt.gca().lines[-1].get_color())  # type: ignore
+    plt.ylim((0, 1.05))
     plt.grid(True)
     plt.legend()
 

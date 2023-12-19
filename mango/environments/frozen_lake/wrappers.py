@@ -15,10 +15,20 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         desc=None,
         map_name="4x4",
         is_slippery=False,
+        seed: int | None = None,
         **kwargs,
     ):
         if map_name == "RANDOM":
-            desc = generate_map(**kwargs)
+            desc = generate_map(**kwargs, seed=seed)
+        if map_name == "8x8":
+            desc = generate_map(
+                p=0.5, shape=(8, 8), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
+            )
+        if map_name == "16x16":
+            desc = generate_map(
+                p=0.5, shape=(16, 16), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
+            )
+
         super().__init__(render_mode, desc, map_name, is_slippery)
         self.action_space = spaces.Discrete(4)
 
@@ -93,7 +103,10 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
         map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]
-        row, col = self.unwrapped.s // self.unwrapped.ncol, self.unwrapped.s % self.unwrapped.ncol
+        row, col = (
+            int(self.unwrapped.s) // self.unwrapped.ncol,
+            int(self.unwrapped.s) % self.unwrapped.ncol,
+        )
         map[row][col] = 0
         map = np.array(map, dtype=np.uint8)
         if not self.one_hot:
@@ -107,7 +120,7 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     def observation_inv(self, obs: npt.NDArray[np.uint8]) -> int:
         agent_idx = np.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
         y, x = np.unravel_index(agent_idx, obs.shape[1:])
-        return int(y * self.unwrapped.ncol + x)
+        return int(y) * self.unwrapped.ncol + int(x)
 
 
 class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
