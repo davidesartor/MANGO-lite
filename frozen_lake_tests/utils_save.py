@@ -4,13 +4,13 @@ from mango import Mango, Agent
 
 
 def path_to_save_dir(map_scale: int, p_frozen: float | None, one_shot: bool):
-    path = f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}"
+    path = f"frozen_lake_tests/results/{2**map_scale}x{2**map_scale}/"
     if p_frozen is None:
-        return path + "_PREDEFINED/"
-    path += f"_RANDOM_{int(p_frozen*100)}%"
-    if one_shot:
-        path += "_1shot"
-    return path + "/"
+        return path + "1map_predefined/"
+    if not one_shot:
+        return path + f"1randmap_{int(p_frozen*100)}%frozen/"
+    else:
+        return path + f"allmaps_{int(p_frozen*100)}%frozen/"
 
 
 def save_to_file(
