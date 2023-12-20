@@ -40,6 +40,31 @@ def reachable_from(
 
 
 @numba.njit
+def ensure_unanbiguos(connected: npt.NDArray[np.bool_]):
+    bad_patterns = [
+        np.array([1, 0, 1, 1], dtype=np.bool_),
+        np.array([0, 1, 0, 1], dtype=np.bool_),
+        np.array([1, 0, 0, 1], dtype=np.bool_),
+    ]
+    fixed_patterns = [
+        np.array([1, 1, 1, 1], dtype=np.bool_),
+        np.array([0, 1, 1, 1], dtype=np.bool_),
+        np.array([1, 1, 1, 1], dtype=np.bool_),
+    ]
+    for idx, (min, max) in [(3, (0, 4)), (4, (0, 4)), (3, (4, 8)), (4, (4, 8))]:
+        for bad, fixed in zip(bad_patterns, fixed_patterns):
+            if (connected[idx, min:max] == bad).all():
+                connected[idx, min:max] = fixed
+            if (connected[idx, min:max] == bad[::-1]).all():
+                connected[idx, min:max] = fixed[::-1]
+            if (connected[min:max, idx] == bad).all():
+                connected[min:max, idx] = fixed
+            if (connected[min:max, idx] == bad[::-1]).all():
+                connected[min:max, idx] = fixed[::-1]
+    return connected
+
+
+@numba.njit
 def random_board(
     shape: tuple[int, int],
     p: float,
@@ -116,6 +141,10 @@ def generate_map(
             connected = random_board(shape, p, contains=None, np_rng=np_rng)
             start_pos = [sample_position_in(connected, np_rng=np_rng)]
             goal_pos = [sample_position_in(connected, avoid=start_pos, np_rng=np_rng)]
+
+    # TODO: do this properly for general abstractions
+    if connected.shape == (8, 8):
+        connected = ensure_unanbiguos(connected)
 
     desc = np.empty(shape, dtype="U1")
     desc[connected] = b"F"
