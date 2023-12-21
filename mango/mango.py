@@ -81,6 +81,7 @@ class MangoLayer(MangoEnv):
 
     def step(self, comand: ActType, randomness=0.0, episode_length=math.inf) -> OptionTransition:
         trajectory = [self.obs]
+        seen_obs = [self.obs]
         rewards = []
         while True:
             obs_masked = self.abs_actions.mask(comand, self.obs)
@@ -93,12 +94,18 @@ class MangoLayer(MangoEnv):
             trajectory += lower_step.trajectory[1:]
             rewards += lower_step.rewards
 
-            if lower_step.beta and not lower_step.failed:
+            term, trunc = lower_step.terminated, lower_step.truncated
+            beta = self.abs_actions.beta(comand, lower_step.flatten())
+
+            if randomness == 0.0:
+                for obs in seen_obs:
+                    if (self.obs == obs).all():
+                        trunc = True
+                seen_obs.append(self.obs)
+            elif lower_step.beta and not lower_step.failed:
                 for replay_memory in self.replay_memory.values():
                     replay_memory.extend(lower_step.all_transitions())
 
-            term, trunc = lower_step.terminated, lower_step.truncated
-            beta = self.abs_actions.beta(comand, lower_step.flatten())
             if term or trunc or beta:
                 break
 
@@ -182,12 +189,11 @@ class Mango(MangoEnv):
         return self.environment.obs
 
     def run_episode(
-        self,
-        randomness: float = 0.0,
-        episode_length=math.inf,
+        self, randomness: float = 0.0, episode_length=math.inf
     ) -> tuple[list[ObsType], list[float]]:
         self.environment.reset()
         trajectory = [self.obs]
+        seen_obs = [self.obs]
         rewards = []
         while True:
             action = self.policy.get_action(self.obs, randomness)
@@ -196,14 +202,22 @@ class Mango(MangoEnv):
                 randomness=randomness**2,
                 episode_length=episode_length - len(trajectory),
             )
-
-            if lower_step.beta and not lower_step.failed:
-                self.replay_memory.extend(lower_step.all_transitions())
             trajectory += lower_step.trajectory[1:]
             rewards += lower_step.rewards
 
-            if lower_step.terminated or lower_step.truncated:
+            term, trunc = lower_step.terminated, lower_step.truncated
+
+            if randomness == 0.0:
+                for obs in seen_obs:
+                    if (self.obs == obs).all():
+                        trunc = True
+                seen_obs.append(self.obs)
+            elif lower_step.beta and not lower_step.failed:
+                self.replay_memory.extend(lower_step.all_transitions())
+
+            if term or trunc:
                 break
+
         self.reward_log.append(sum(rewards))
         self.episode_length_log.append(len(trajectory))
         return trajectory, rewards

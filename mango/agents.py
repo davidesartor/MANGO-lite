@@ -25,12 +25,22 @@ class Agent:
         while len(trajectory) < episode_length:
             action = self.policy.get_action(obs, randomness)
             next_obs, reward, term, trunc, info = self.environment.step(action)
-            self.replay_memory.push(Transition(obs, action, next_obs, reward, term, trunc, info))
+
+            if randomness == 0.0:
+                for seen_obs in trajectory:
+                    if (seen_obs == next_obs).all():
+                        trunc = True
+            else:
+                self.replay_memory.push(
+                    Transition(obs, action, next_obs, reward, term, trunc, info)
+                )
             trajectory.append(next_obs)
             rewards.append(reward)
+            obs = next_obs
+
             if term or trunc:
                 break
-            obs = next_obs
+
         self.reward_log.append(sum(rewards))
         self.episode_length_log.append(len(trajectory))
         return trajectory, rewards

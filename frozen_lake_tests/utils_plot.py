@@ -4,12 +4,20 @@ from mango.actions import grid2D
 
 
 def smooth(signal, window=0.05):
+    window = max(3, int(len(signal) * window))
     if len(signal) < 10:
         return signal
-    signal = np.array([s for s in signal if s is not None])
-    window = max(3, int(len(signal) * window))
-    window_array = np.ones(window) / window
-    return np.convolve(signal, window_array, mode="valid")
+    if len(signal) < 100000:
+        signal = np.array([s for s in signal if s is not None])
+        window_array = np.ones(window) / window
+        return np.convolve(signal, window_array, mode="valid")
+    else:
+        signal = [s for s in signal if s is not None]
+        filtered = []
+        for i in range(0, len(signal), window):
+            filtered.append(np.mean(signal[i : i + window]))
+        filtered.append(np.mean(signal[window * (len(signal) // window) - 1 :]))
+        return np.array(filtered)
 
 
 def plot_mango_agent_loss_reward(mango, save_path=None):

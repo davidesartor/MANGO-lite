@@ -1,21 +1,45 @@
-lower gamma for options helps make the training more stable:
-    quicker convergence of options to reasonable routines 
-    more training examples at higher levels
-    con: poor performance for larger abstractions
+split the training episodes into exploration and evaluation
+    for training, action prob is softmax(qval) with temperature 
+    for evaluation use greedy policies
+    logging the eval episodes seems to help converge faster
 
 exploration rate decay -> i.e. randomness(i-1) = randomness(i)**2 < randomness(i) 
     higher levels learn slower = should converge to deterministic policies more slowly 
     con: less effective exploration at lower layer
-    (i.e. 4x4 sometimes never gets the reward bc the low policy anneals too fast)
 
 use deterministic beta and truncate global episode = learns deterministic transitions
     need less episodes to generalize
     quvalues change in blocks rather than gradually
 
-workaround to somewhat address Vincent's suggestion about state "condensation"
+temporary workaround to mitigate (to some degree) the issues that Vincent pointed out 
+    approximate the state "condensation" by pushing to memory all transitions in trajectory
+    it is supposed to work well for small abstractions (2x2,4x4) but it is not going to scale
 
 
-runs 0,1,2:
-runs 3,4,5:
-runs 6,7:
-runs 8,9:
+notes on runs:
+
+1randmap runs 
+    0-10: 5k+5k episodes truncated after Nmax steps
+        success rate: normal qlearning 1/10, mango 10/10
+    
+    10-18: 5k+5k episodes truncated on repetition when using deterministic policy
+        success rate: normal qlearning 4/9, mango 9/9
+
+    20-29: 1k+1k episodes truncated on repetition when using deterministic policy
+        success rate: normal qlearning 1/10, mango 4/10
+
+    still do 0.5-0.7-0.9 but separate the evaluation
+    1 layer vs 2 layers
+    mask vs no mask
+
+allmaps runs 
+    0-1: 50k+50k episodes truncated after Nmax steps
+    2-4: 25k+25k episodes truncated on repetition when using deterministic policy
+
+    takeaways from few completed runs: 
+        qlearning just needs lots of examples but it can solve the distribution
+        the number of episodes needed to converge seems to have high variance
+
+        mango learns the easy maps fast but takes long time to generalize
+        the failcases are due to poor learning of options on "edgecases" (see. run 1)
+        possible easy solution: increase gamma from 0.8 to 0.9/0.95-> might slow down learning

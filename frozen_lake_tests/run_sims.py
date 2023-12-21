@@ -5,11 +5,11 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_scale = 3
+map_scale = 2
 p_frozen = 0.5
-one_shot = True
-device = torch.device("cuda:2")
-run_ids = [1, 3, 5]
+one_shot = False
+device = torch.device("cuda:0")
+run_ids = [1, 2, 3, 4, 5]
 train_normal_agent = True
 train_mango_agent = True
 
@@ -23,17 +23,16 @@ def run_sim(run_id, use_mango=False):
         agent = utils_sim.make_agent(env, map_scale, device=device)
 
     # train loop
-    N_episodes, train_steps_per_episode, episode_length = utils_sim.train_params(
-        map_scale, p_frozen, one_shot
-    )
+    N_episodes, train_steps_per_episode = utils_sim.train_params(map_scale, p_frozen, one_shot)
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
-    for episode_idx, randomness in enumerate(
-        tqdm(np.linspace(1.0, 0.0, N_episodes), desc=p_bar_descr)
-    ):
-        randomness = 0.0 if episode_idx % 2 else randomness
-        agent.run_episode(randomness, episode_length)
+    randomness = np.concatenate(
+        [np.linspace(1.0, 0.2, N_episodes // 2), np.ones(N_episodes // 2) * 0.2]
+    )
+    for episode_idx, r in enumerate(tqdm(randomness, desc=p_bar_descr)):
+        agent.run_episode(randomness=r)
         for _ in range(train_steps_per_episode):
             agent.train()
+        agent.run_episode(randomness=0.0)
     return agent
 
 

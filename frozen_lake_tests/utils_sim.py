@@ -6,14 +6,13 @@ from mango.actions import grid2D
 from mango import Mango, Agent
 
 
-def train_params(map_scale: int, p_frozen: float | None, one_shot) -> tuple[int, int, int]:
+def train_params(map_scale: int, p_frozen: float | None, one_shot) -> tuple[int, int]:
     N_episodes = 10 * 10**map_scale
     if one_shot and p_frozen is not None:
-        N_episodes *= 10
+        N_episodes *= 10 // 2
 
     train_steps_per_episode = 5
-    episode_length = 2 * 4**map_scale
-    return N_episodes, train_steps_per_episode, episode_length
+    return N_episodes, train_steps_per_episode
 
 
 def env_params(
