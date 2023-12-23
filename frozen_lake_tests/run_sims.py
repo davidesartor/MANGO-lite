@@ -9,9 +9,9 @@ map_scale = 3
 p_frozen = 0.5
 one_shot = True
 
-cuda_idx = 2
+cuda_idx = 0
 device = torch.device(f"cuda:{cuda_idx}")
-run_ids = [list(range(0, 2)), list(range(2, 4)), list(range(4, 6))][cuda_idx]
+run_ids = [3]
 train_normal_agent = True
 train_mango_agent = True
 
