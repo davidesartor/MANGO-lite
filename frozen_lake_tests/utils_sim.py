@@ -6,13 +6,15 @@ from mango.actions import grid2D
 from mango import Mango, Agent
 
 
-def train_params(map_scale: int, p_frozen: float | None, one_shot) -> tuple[int, int]:
-    N_episodes = 10 * 10**map_scale
+def train_params(map_scale: int, p_frozen: float | None, one_shot) -> tuple[int, int, int, int]:
+    max_episodes = 10 * 10**map_scale
     if one_shot and p_frozen is not None:
-        N_episodes *= 10 // 2
-
+        max_episodes *= 10
+    annealing_episodes = max_episodes // 5
+    max_episodes = max_episodes - annealing_episodes
     train_steps_per_episode = 5
-    return N_episodes, train_steps_per_episode
+    episode_length = 4**map_scale
+    return annealing_episodes, max_episodes, train_steps_per_episode, episode_length
 
 
 def env_params(
@@ -69,7 +71,7 @@ def dynamic_policy_params(map_scale: int, lr: float, gamma: float, device) -> di
     return dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_scale, lr, gamma, device))
 
 
-def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8, device=torch.device("cpu")):
+def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.9, device=torch.device("cpu")):
     cell_scales = list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
@@ -84,7 +86,7 @@ def make_mango_agent(env, map_scale: int, lr: float = 3e-4, gamma=0.8, device=to
 
 
 def make_agent(
-    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.95, device=torch.device("cpu")
+    env, map_scale: int, lr: float = 3e-4, gamma: float = 0.9, device=torch.device("cpu")
 ):
     agent = Agent(
         environment=env,

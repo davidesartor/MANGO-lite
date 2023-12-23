@@ -88,7 +88,7 @@ class MangoLayer(MangoEnv):
             action = self.policy.get_action(comand, obs_masked, randomness)
             lower_step = self.lower_layer.step(
                 comand=action,
-                randomness=randomness**2,
+                randomness=randomness / 2,
                 episode_length=episode_length - len(trajectory),
             )
             trajectory += lower_step.trajectory[1:]
@@ -199,7 +199,7 @@ class Mango(MangoEnv):
             action = self.policy.get_action(self.obs, randomness)
             lower_step = self.layers[-1].step(
                 comand=action,
-                randomness=randomness**2,
+                randomness=randomness / 2,
                 episode_length=episode_length - len(trajectory),
             )
             trajectory += lower_step.trajectory[1:]

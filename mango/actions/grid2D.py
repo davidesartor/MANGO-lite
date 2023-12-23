@@ -30,10 +30,10 @@ class SubGridMovement(AbstractActions):
     grid_shape: tuple[int, int]
     agent_channel: Optional[int] = None
     invalid_channel: Optional[int] = None
-    success_reward: float = 0.75
-    failure_reward: float = -0.75
+    success_reward: float = 0.5
+    failure_reward: float = -0.5
     step_reward: float = -0.0
-    termination_reward: float = +0.25
+    termination_reward: float = +0.5
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
 

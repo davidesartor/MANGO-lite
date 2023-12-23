@@ -5,11 +5,13 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_scale = 2
+map_scale = 3
 p_frozen = 0.5
-one_shot = False
-device = torch.device("cuda:0")
-run_ids = [1, 2, 3, 4, 5]
+one_shot = True
+
+cuda_idx = 2
+device = torch.device(f"cuda:{cuda_idx}")
+run_ids = [list(range(0, 2)), list(range(2, 4)), list(range(4, 6))][cuda_idx]
 train_normal_agent = True
 train_mango_agent = True
 
@@ -23,16 +25,29 @@ def run_sim(run_id, use_mango=False):
         agent = utils_sim.make_agent(env, map_scale, device=device)
 
     # train loop
-    N_episodes, train_steps_per_episode = utils_sim.train_params(map_scale, p_frozen, one_shot)
+    annealing_episodes, max_episodes, train_steps, episode_length = utils_sim.train_params(
+        map_scale, p_frozen, one_shot
+    )
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
     randomness = np.concatenate(
-        [np.linspace(1.0, 0.2, N_episodes // 2), np.ones(N_episodes // 2) * 0.2]
+        [np.linspace(1.0, 0.2, annealing_episodes), np.ones(max_episodes) * 0.2]
     )
-    for episode_idx, r in enumerate(tqdm(randomness, desc=p_bar_descr)):
-        agent.run_episode(randomness=r)
-        for _ in range(train_steps_per_episode):
+    episode_rewards = [0.0] * 1000
+    for r in tqdm(randomness, desc=p_bar_descr, leave=False):
+        # exploration
+        agent.run_episode(randomness=r, episode_length=episode_length)
+
+        # training
+        for _ in range(train_steps):
             agent.train()
-        agent.run_episode(randomness=0.0)
+
+        # evaluation
+        trajectory, rewards = agent.run_episode(randomness=0.0, episode_length=episode_length)
+
+        # early stopping when the agent is good enough
+        episode_rewards.append(np.sum(rewards))
+        if float(np.mean(episode_rewards[-1000:])) >= 0.95:
+            break
     return agent
 
 
@@ -41,18 +56,19 @@ if __name__ == "__main__":
     sys.path.append(cwd)
     import utils_sim, utils_save
 
-    for run_id in tqdm(run_ids, desc="runs"):
+    for run_id in tqdm(run_ids, desc="runs", leave=False):
         dir_path = utils_save.path_to_save_dir(map_scale, p_frozen, one_shot) + "models/"
         os.makedirs(dir_path, exist_ok=True)
+        run_id_str = f"run_0{run_id}" if run_id < 10 else f"run_{run_id}"
 
         if train_normal_agent:
             normal_agent = run_sim(run_id, use_mango=False)
             utils_save.save_to_file(
-                path=dir_path + f"normal_agent_run_{run_id}.pickle", obj=normal_agent
+                path=dir_path + f"normal_agent_{run_id_str}.pickle", obj=normal_agent
             )
 
         if train_mango_agent:
             mango_agent = run_sim(run_id, use_mango=True)
             utils_save.save_to_file(
-                path=dir_path + f"mango_agent_run_{run_id}.pickle", obj=mango_agent
+                path=dir_path + f"mango_agent_{run_id_str}.pickle", obj=mango_agent
             )
