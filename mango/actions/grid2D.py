@@ -30,6 +30,7 @@ class SubGridMovement(AbstractActions):
     grid_shape: tuple[int, int]
     agent_channel: Optional[int] = None
     invalid_channel: Optional[int] = None
+    mask_state: bool = True
     success_reward: float = 0.5
     failure_reward: float = -0.5
     step_reward: float = -0.0
@@ -90,7 +91,7 @@ class SubGridMovement(AbstractActions):
         return reward
 
     def mask(self, comand: ActType, obs: ObsType) -> ObsType:
-        if self.agent_channel is None:
+        if self.agent_channel is None or not self.mask_state:
             return obs
 
         if self.invalid_channel is None:

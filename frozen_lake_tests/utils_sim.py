@@ -45,13 +45,14 @@ def make_env(
     return env
 
 
-def abstract_actions(map_base: int, map_scale: int, cell_scales: list[int]):
+def abstract_actions(map_base: int, map_scale: int, cell_scales: list[int], mask_state: bool):
     return [
         grid2D.SubGridMovement(
             cell_shape=(map_base**cell_scale, map_base**cell_scale),
             grid_shape=(map_base**map_scale, map_base**map_scale),
             agent_channel=0,
             invalid_channel=1,
+            mask_state=mask_state,
         )
         for cell_scale in cell_scales
     ]
@@ -83,6 +84,7 @@ def make_mango_agent(
     env,
     map_base: int,
     map_scale: int,
+    mask_state: bool = True,
     lr: float = 3e-4,
     gamma=0.9,
     device=torch.device("cpu"),
@@ -90,7 +92,7 @@ def make_mango_agent(
     cell_scales = list(range(1, map_scale))
     mango_agent = Mango(
         environment=env,
-        abstract_actions=abstract_actions(map_base, map_scale, cell_scales),
+        abstract_actions=abstract_actions(map_base, map_scale, cell_scales, mask_state),
         policy_cls=DQNetPolicy,
         policy_params=policy_params(map_base, map_scale, lr, gamma, device),
         dynamic_policy_params=[

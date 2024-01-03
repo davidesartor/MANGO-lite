@@ -5,23 +5,24 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_base = 3
+map_base = 2
 map_scale = 3
-p_frozen = None
+p_frozen = 0.3
 one_shot = False
 
-cuda_idx = 2
+cuda_idx = 0
 device = torch.device(f"cuda:{cuda_idx}")
-run_ids = [cuda_idx]
+run_ids = list(range(10))
 train_normal_agent = False
-train_mango_agent = True
+train_mango_agent = False
+train_nomask_mango_agent = True
 
 
-def run_sim(run_id, use_mango=False):
+def run_sim(run_id, use_mango, mask_state=True):
     # create the environment and the agent
     env = utils_sim.make_env(map_base, map_scale, p_frozen, one_shot, seed=run_id)
     if use_mango:
-        agent = utils_sim.make_mango_agent(env, map_base, map_scale, device=device)
+        agent = utils_sim.make_mango_agent(env, map_base, map_scale, mask_state, device=device)
     else:
         agent = utils_sim.make_agent(env, map_base, map_scale, device=device)
 
@@ -69,7 +70,13 @@ if __name__ == "__main__":
             )
 
         if train_mango_agent:
-            mango_agent = run_sim(run_id, use_mango=True)
+            mango_agent = run_sim(run_id, use_mango=True, mask_state=True)
             utils_save.save_to_file(
                 path=dir_path + f"mango_agent_{run_id_str}.pickle", obj=mango_agent
+            )
+
+        if train_nomask_mango_agent:
+            mango_agent = run_sim(run_id, use_mango=True, mask_state=False)
+            utils_save.save_to_file(
+                path=dir_path + f"nomask_mango_agent_{run_id_str}.pickle", obj=mango_agent
             )
