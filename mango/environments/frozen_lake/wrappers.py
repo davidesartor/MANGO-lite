@@ -28,6 +28,14 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
             desc = generate_map(
                 p=0.5, shape=(16, 16), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
             )
+        if map_name == "9x9":
+            desc = generate_map(
+                p=0.5, shape=(9, 9), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
+            )
+        if map_name == "27x27":
+            desc = generate_map(
+                p=0.5, shape=(27, 27), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
+            )
 
         super().__init__(render_mode, desc, map_name, is_slippery)
         self.action_space = spaces.Discrete(4)

@@ -5,28 +5,29 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
+map_base = 3
 map_scale = 3
-p_frozen = 0.5
-one_shot = True
+p_frozen = None
+one_shot = False
 
-cuda_idx = 0
+cuda_idx = 2
 device = torch.device(f"cuda:{cuda_idx}")
-run_ids = [3]
-train_normal_agent = True
+run_ids = [cuda_idx]
+train_normal_agent = False
 train_mango_agent = True
 
 
 def run_sim(run_id, use_mango=False):
     # create the environment and the agent
-    env = utils_sim.make_env(map_scale, p_frozen, one_shot, seed=run_id)
+    env = utils_sim.make_env(map_base, map_scale, p_frozen, one_shot, seed=run_id)
     if use_mango:
-        agent = utils_sim.make_mango_agent(env, map_scale, device=device)
+        agent = utils_sim.make_mango_agent(env, map_base, map_scale, device=device)
     else:
-        agent = utils_sim.make_agent(env, map_scale, device=device)
+        agent = utils_sim.make_agent(env, map_base, map_scale, device=device)
 
     # train loop
     annealing_episodes, max_episodes, train_steps, episode_length = utils_sim.train_params(
-        map_scale, p_frozen, one_shot
+        map_base, map_scale, p_frozen, one_shot
     )
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
     randomness = np.concatenate(
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     import utils_sim, utils_save
 
     for run_id in tqdm(run_ids, desc="runs", leave=False):
-        dir_path = utils_save.path_to_save_dir(map_scale, p_frozen, one_shot) + "models/"
+        dir_path = utils_save.path_to_save_dir(map_base, map_scale, p_frozen, one_shot) + "models/"
         os.makedirs(dir_path, exist_ok=True)
         run_id_str = f"run_0{run_id}" if run_id < 10 else f"run_{run_id}"
 
