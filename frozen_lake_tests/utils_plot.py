@@ -98,15 +98,18 @@ def plot_normal_agent_loss_reward(agent: Agent, save_path: Optional[str] = None)
 
 
 def plot_confront_loss_reward(
-    agents: list[Mango | Agent], labels: list[str], save_path: Optional[str] = None
+    agents: list[Mango | Agent],
+    labels: list[str],
+    colors: list[str],
+    save_path: Optional[str] = None,
 ):
     plt.figure(figsize=(10, 4))
     if save_path is not None:
         plt.suptitle(save_path[-10:-4])
     plt.subplot(1, 2, 1)
     plt.title(f"reward")
-    for agent, label in zip(agents, labels):
-        plt.plot(smooth(agent.reward_log[1::2]), label=label + " evaluation")
+    for agent, label, color in zip(agents, labels, colors):
+        plt.plot(smooth(agent.reward_log[1::2]), label=label + " evaluation", color=color)
         plt.plot(
             smooth(agent.reward_log[::2]),
             color=plt.gca().lines[-1].get_color(),
@@ -118,8 +121,8 @@ def plot_confront_loss_reward(
 
     plt.subplot(1, 2, 2)
     plt.title(f"episode lenght")
-    for agent, label in zip(agents, labels):
-        plt.plot(smooth(agent.episode_length_log[1::2]), label=label + " evaluation")
+    for agent, label, color in zip(agents, labels, colors):
+        plt.plot(smooth(agent.episode_length_log[1::2]), label=label + " evaluation", color=color)
         plt.plot(
             smooth(agent.episode_length_log[::2]),
             color=plt.gca().lines[-1].get_color(),
@@ -158,7 +161,7 @@ def get_statistics(agents, eval=True):
 def plot_confront_loss_reward_avg(
     agents: list[list[Mango | Agent]],
     labels: list[str],
-    colors=["tab:blue", "tab:orange"],
+    colors: list[str],
     save_path: Optional[str] = None,
 ):
     plt.figure(figsize=(10, 4))
@@ -215,7 +218,8 @@ def plot_confront_reward_avg_multiple_p(
     map_scale: int,
     p_frozen: list[float],
     one_shot: bool,
-    ignore_agent: bool = False,
+    plot_vanilla_agent: bool = False,
+    plot_nomask_mango_agent: bool = False,
     save_path: Optional[str] = None,
 ):
     def load_agents(dir_path, agent_type):
@@ -224,20 +228,6 @@ def plot_confront_reward_avg_multiple_p(
         return [
             utils_save.load_from_file(dir_path + "models/" + file_name) for file_name in agent_files
         ]
-
-    if not ignore_agent:
-        for p, style in zip(p_frozen, ["-", "--", ":", "-."]):
-            # load agent models one by one
-            dir_path = utils_save.path_to_save_dir(map_base, map_scale, p, one_shot)
-            annealing_ep, max_ep, _, _ = utils_sim.train_params(map_base, map_scale, p, one_shot)
-            max_len = annealing_ep + max_ep
-
-            agents = load_agents(dir_path, "normal_agent")
-            r_mean, r_ci, ep_mean, ep_ci = get_statistics(agents, eval=True)
-            plt.plot(r_mean, style, color="tab:blue", label=f"vanilla {int(p*100)}% frozen")
-            plt.fill_between(
-                range(len(r_mean)), r_mean - r_ci, r_mean + r_ci, color="tab:blue", alpha=0.2
-            )
 
     for p, style in zip(p_frozen, ["-", "--", ":", "-."]):
         # load agent models one by one
@@ -252,6 +242,35 @@ def plot_confront_reward_avg_multiple_p(
             range(len(r_mean)), r_mean - r_ci, r_mean + r_ci, color="tab:orange", alpha=0.2
         )
 
+    if plot_vanilla_agent:
+        for p, style in zip(p_frozen, ["-", "--", ":", "-."]):
+            # load agent models one by one
+            dir_path = utils_save.path_to_save_dir(map_base, map_scale, p, one_shot)
+            annealing_ep, max_ep, _, _ = utils_sim.train_params(map_base, map_scale, p, one_shot)
+            max_len = annealing_ep + max_ep
+
+            agents = load_agents(dir_path, "normal_agent")
+            r_mean, r_ci, ep_mean, ep_ci = get_statistics(agents, eval=True)
+            plt.plot(r_mean, style, color="tab:blue", label=f"vanilla {int(p*100)}% frozen")
+            plt.fill_between(
+                range(len(r_mean)), r_mean - r_ci, r_mean + r_ci, color="tab:blue", alpha=0.2
+            )
+
+    if plot_nomask_mango_agent:
+        for p, style in zip(p_frozen, ["-", "--", ":", "-."]):
+            # load agent models one by one
+            dir_path = utils_save.path_to_save_dir(map_base, map_scale, p, one_shot)
+            annealing_ep, max_ep, _, _ = utils_sim.train_params(map_base, map_scale, p, one_shot)
+            max_len = annealing_ep + max_ep
+
+            agents = load_agents(dir_path, "nomask_mango_agent")
+            r_mean, r_ci, ep_mean, ep_ci = get_statistics(agents, eval=True)
+            plt.plot(r_mean, style, color="tab:green", label=f"nomask mango {int(p*100)}% frozen")
+            plt.fill_between(
+                range(len(r_mean)), r_mean - r_ci, r_mean + r_ci, color="tab:green", alpha=0.2
+            )
+
+    plt.grid(True)
     plt.ylim((-0.05, 1.05))
     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
 
