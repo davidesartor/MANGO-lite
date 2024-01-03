@@ -1,8 +1,10 @@
+import os
 from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from mango.actions import grid2D
 from mango import Mango, Agent
+from . import utils_save, utils_sim
 
 
 def smooth(signal, window=0.05):
@@ -134,30 +136,31 @@ def plot_confront_loss_reward(
     plt.show()
 
 
+def get_statistics(agents, eval=True):
+    reward_logs = []
+    ep_len_logs = []
+    for agent in agents:
+        reward_logs.append(smooth(agent.reward_log[1::2] if eval else agent.reward_log[::2]))
+        ep_len_logs.append(
+            smooth(agent.episode_length_log[1::2] if eval else agent.episode_length_log[::2])
+        )
+    max_len = max(len(r) for r in reward_logs)
+    reward_logs = [np.pad(r, (0, max_len - len(r)), mode="edge") for r in reward_logs]
+    reward_mean = np.mean(reward_logs, axis=0)
+    reard_ci95 = 1.96 * np.std(reward_logs, axis=0) / np.sqrt(len(reward_logs))
+    max_len = max(len(r) for r in ep_len_logs)
+    ep_len_logs = [np.pad(r, (0, max_len - len(r)), mode="edge") for r in ep_len_logs]
+    ep_len_mean = np.mean(ep_len_logs, axis=0)
+    ep_len_ci95 = 1.96 * np.std(ep_len_logs, axis=0) / np.sqrt(len(ep_len_logs))
+    return reward_mean, reard_ci95, ep_len_mean, ep_len_ci95
+
+
 def plot_confront_loss_reward_avg(
     agents: list[list[Mango | Agent]],
     labels: list[str],
     colors=["tab:blue", "tab:orange"],
     save_path: Optional[str] = None,
 ):
-    def get_statistics(agents, eval=True):
-        reward_logs = []
-        ep_len_logs = []
-        for agent in agents:
-            reward_logs.append(smooth(agent.reward_log[1::2] if eval else agent.reward_log[::2]))
-            ep_len_logs.append(
-                smooth(agent.episode_length_log[1::2] if eval else agent.episode_length_log[::2])
-            )
-        max_len = max(len(r) for r in reward_logs)
-        reward_logs = [np.pad(r, (0, max_len - len(r)), mode="edge") for r in reward_logs]
-        reward_mean = np.mean(reward_logs, axis=0)
-        reard_ci95 = 1.96 * np.std(reward_logs, axis=0) / np.sqrt(len(reward_logs))
-        max_len = max(len(r) for r in ep_len_logs)
-        ep_len_logs = [np.pad(r, (0, max_len - len(r)), mode="edge") for r in ep_len_logs]
-        ep_len_mean = np.mean(ep_len_logs, axis=0)
-        ep_len_ci95 = 1.96 * np.std(ep_len_logs, axis=0) / np.sqrt(len(ep_len_logs))
-        return reward_mean, reard_ci95, ep_len_mean, ep_len_ci95
-
     plt.figure(figsize=(10, 4))
     if save_path is not None:
         plt.suptitle(f"average across {len(agents[0])} runs")
@@ -200,6 +203,56 @@ def plot_confront_loss_reward_avg(
             )
     plt.ylim((-0.1, None))
     plt.grid(True)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches="tight")
+    plt.show()
+
+
+def plot_confront_reward_avg_multiple_p(
+    map_base: int,
+    map_scale: int,
+    p_frozen: list[float],
+    one_shot: bool,
+    ignore_agent: bool = False,
+    save_path: Optional[str] = None,
+):
+    def load_agents(dir_path, agent_type):
+        files = sorted(os.listdir(dir_path + "models/"))
+        agent_files = [name for name in files if name.startswith(agent_type)]
+        return [
+            utils_save.load_from_file(dir_path + "models/" + file_name) for file_name in agent_files
+        ]
+
+    if not ignore_agent:
+        for p, style in zip(p_frozen, ["-", "--", ":", "-."]):
+            # load agent models one by one
+            dir_path = utils_save.path_to_save_dir(map_base, map_scale, p, one_shot)
+            annealing_ep, max_ep, _, _ = utils_sim.train_params(map_base, map_scale, p, one_shot)
+            max_len = annealing_ep + max_ep
+
+            agents = load_agents(dir_path, "normal_agent")
+            r_mean, r_ci, ep_mean, ep_ci = get_statistics(agents, eval=True)
+            plt.plot(r_mean, style, color="tab:blue", label=f"vanilla {int(p*100)}% frozen")
+            plt.fill_between(
+                range(len(r_mean)), r_mean - r_ci, r_mean + r_ci, color="tab:blue", alpha=0.2
+            )
+
+    for p, style in zip(p_frozen, ["-", "--", ":", "-."]):
+        # load agent models one by one
+        dir_path = utils_save.path_to_save_dir(map_base, map_scale, p, one_shot)
+        annealing_ep, max_ep, _, _ = utils_sim.train_params(map_base, map_scale, p, one_shot)
+        max_len = annealing_ep + max_ep
+
+        agents = load_agents(dir_path, "mango_agent")
+        r_mean, r_ci, ep_mean, ep_ci = get_statistics(agents, eval=True)
+        plt.plot(r_mean, style, color="tab:orange", label=f"mango {int(p*100)}% frozen")
+        plt.fill_between(
+            range(len(r_mean)), r_mean - r_ci, r_mean + r_ci, color="tab:orange", alpha=0.2
+        )
+
+    plt.ylim((-0.05, 1.05))
     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
 
     if save_path is not None:
