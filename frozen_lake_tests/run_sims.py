@@ -7,12 +7,12 @@ import numpy as np
 # parameters for the environment
 map_base = 2
 map_scale = 3
-p_frozen = 0.7
+p_frozen = 0.5
 one_shot = True
 
 cuda_idx = 1
 device = torch.device(f"cuda:{cuda_idx}")
-run_ids = [0, 1]
+run_ids = [5, 6]
 train_normal_agent = False
 train_mango_agent = False
 train_nomask_mango_agent = True
@@ -32,7 +32,7 @@ def run_sim(run_id, use_mango, mask_state=True):
     )
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
     randomness = np.concatenate(
-        [np.linspace(1.0, 0.2, annealing_episodes), np.ones(max_episodes) * 0.2]
+        [np.linspace(1.0, 0.1, annealing_episodes), np.ones(max_episodes) * 0.1]
     )
     episode_rewards = [0.0] * 1000
     for r in tqdm(randomness, desc=p_bar_descr, leave=False):
