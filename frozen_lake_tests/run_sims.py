@@ -7,12 +7,12 @@ import numpy as np
 # parameters for the environment
 map_base = 2
 map_scale = 3
-p_frozen = 0.5
+p_frozen = 0.7
 one_shot = True
 
-cuda_idx = 2
+cuda_idx = 1
 device = torch.device(f"cuda:{cuda_idx}")
-run_ids = [4]
+run_ids = [0, 1]
 train_normal_agent = False
 train_mango_agent = False
 train_nomask_mango_agent = True
