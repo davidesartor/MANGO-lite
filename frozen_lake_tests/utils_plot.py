@@ -8,7 +8,7 @@ from . import utils_save, utils_sim
 
 
 def smooth(signal, window=0.05):
-    window = max(3, int(len(signal) * window))
+    window = min((1000, max(3, int(len(signal) * window))))
     if len(signal) < 10:
         return signal
     signal = np.array([s for s in signal if s is not None])
@@ -103,10 +103,10 @@ def plot_confront_loss_reward(
     colors: list[str],
     save_path: Optional[str] = None,
 ):
-    plt.figure(figsize=(10, 4))
+    plt.figure(figsize=(14, 4))
     if save_path is not None:
         plt.suptitle(save_path[-10:-4])
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 3, 1)
     plt.title(f"reward")
     for agent, label, color in zip(agents, labels, colors):
         plt.plot(smooth(agent.reward_log[1::2]), label=label + " evaluation", color=color)
@@ -118,8 +118,9 @@ def plot_confront_loss_reward(
         )
     plt.ylim((-0.05, 1.05))
     plt.grid(True)
+    plt.xlabel("episode")
 
-    plt.subplot(1, 2, 2)
+    plt.subplot(1, 3, 2)
     plt.title(f"episode lenght")
     for agent, label, color in zip(agents, labels, colors):
         plt.plot(smooth(agent.episode_length_log[1::2]), label=label + " evaluation", color=color)
@@ -131,6 +132,23 @@ def plot_confront_loss_reward(
         )
     plt.ylim((-0.1, None))
     plt.grid(True)
+    plt.xlabel("episode")
+
+    plt.subplot(1, 3, 3)
+    plt.title(f"reward")
+    for agent, label, color in zip(agents, labels, colors):
+        steps = smooth(np.cumsum(agent.episode_length_log[::2]))
+        plt.plot(steps, smooth(agent.reward_log[1::2]), label=label + " evaluation", color=color)
+        plt.plot(
+            steps,
+            smooth(agent.reward_log[::2]),
+            color=plt.gca().lines[-1].get_color(),
+            alpha=0.3,
+            label=label + " exploration",
+        )
+    plt.ylim((-0.05, 1.05))
+    plt.grid(True)
+    plt.xlabel("interaction steps")
 
     plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
 

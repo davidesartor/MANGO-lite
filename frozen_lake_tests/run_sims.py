@@ -10,12 +10,12 @@ map_scale = 3
 p_frozen = 0.5
 one_shot = True
 
-cuda_idx = 1
-device = torch.device(f"cuda:{cuda_idx}")
-run_ids = [5, 6]
+cuda_idx = None
+device = torch.device(f"cuda:{cuda_idx}" if cuda_idx is not None else "cpu")
+run_ids = [7, 8]
 train_normal_agent = False
-train_mango_agent = False
-train_nomask_mango_agent = True
+train_mango_agent = True
+train_nomask_mango_agent = False
 
 
 def run_sim(run_id, use_mango, mask_state=True):
@@ -32,7 +32,7 @@ def run_sim(run_id, use_mango, mask_state=True):
     )
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
     randomness = np.concatenate(
-        [np.linspace(1.0, 0.1, annealing_episodes), np.ones(max_episodes) * 0.1]
+        [np.linspace(1.0, 0.05, annealing_episodes), np.ones(max_episodes) * 0.05]
     )
     episode_rewards = [0.0] * 1000
     for r in tqdm(randomness, desc=p_bar_descr, leave=False):
