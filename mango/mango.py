@@ -24,11 +24,11 @@ class MangoEnv:
         trajectory = [self.obs]
         if comand in self.environment.action_space:
             self.obs, reward, term, trunc, info = self.environment.step(comand)
+            trajectory.append(self.obs)
         else:
             reward, term, trunc, info = 0.0, False, False, {}
         if episode_length <= 1:
             trunc = True
-        trajectory.append(self.obs)
         return OptionTransition(
             comand=comand,
             trajectory=trajectory,
@@ -97,14 +97,14 @@ class MangoLayer(MangoEnv):
             term, trunc = lower_step.terminated, lower_step.truncated
             beta = self.abs_actions.beta(comand, lower_step.flatten())
 
-            if randomness == 0.0:
-                for obs in seen_obs:
-                    if (self.obs == obs).all():
-                        trunc = True
-                seen_obs.append(self.obs)
-            elif lower_step.beta and not lower_step.failed:
-                for replay_memory in self.replay_memory.values():
-                    replay_memory.extend(lower_step.all_transitions())
+            if sum([(self.obs == obs).all() for obs in seen_obs]) > 1:
+                trunc = True
+            seen_obs.append(self.obs)
+
+            if randomness > 0.0:
+                if lower_step.beta and not lower_step.failed:
+                    for replay_memory in self.replay_memory.values():
+                        replay_memory.extend(lower_step.all_transitions())
 
             if term or trunc or beta:
                 break
@@ -207,13 +207,13 @@ class Mango(MangoEnv):
 
             term, trunc = lower_step.terminated, lower_step.truncated
 
-            if randomness == 0.0:
-                for obs in seen_obs:
-                    if (self.obs == obs).all():
-                        trunc = True
-                seen_obs.append(self.obs)
-            elif lower_step.beta and not lower_step.failed:
-                self.replay_memory.extend(lower_step.all_transitions())
+            if sum([(self.obs == obs).all() for obs in seen_obs]) > 1:
+                trunc = True
+            seen_obs.append(self.obs)
+
+            if randomness > 0.0:
+                if lower_step.beta and not lower_step.failed:
+                    self.replay_memory.extend(lower_step.all_transitions())
 
             if term or trunc:
                 break
