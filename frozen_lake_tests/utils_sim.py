@@ -9,10 +9,10 @@ from mango import Mango, Agent
 def train_params(
     map_base: int, map_scale: int, p_frozen: float | None, one_shot
 ) -> tuple[int, int, int, int]:
-    max_episodes = 10 ** (map_scale + map_base - 1)
-    if one_shot and p_frozen is not None:
-        max_episodes *= 10
-    annealing_episodes = max_episodes // 5
+    max_episodes = 10 ** (map_scale + map_base)
+    if not one_shot or p_frozen is None:
+        max_episodes = max_episodes // 2
+    annealing_episodes = max_episodes // 10
     max_episodes = max_episodes - annealing_episodes
     train_steps_per_episode = 5
     episode_length = (map_base**map_scale) ** 2
@@ -86,7 +86,7 @@ def make_mango_agent(
     map_scale: int,
     mask_state: bool = True,
     lr: float = 3e-4,
-    gamma=0.9,
+    gamma=0.95,
     device=torch.device("cpu"),
 ):
     cell_scales = list(range(1, map_scale))
@@ -107,7 +107,7 @@ def make_agent(
     map_base: int,
     map_scale: int,
     lr: float = 3e-4,
-    gamma: float = 0.9,
+    gamma: float = 0.95,
     device=torch.device("cpu"),
 ):
     agent = Agent(
