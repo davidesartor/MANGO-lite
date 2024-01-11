@@ -15,35 +15,33 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         desc=None,
         map_name="4x4",
         is_slippery=False,
+        fail_on_out_of_bounds: bool = True,
         seed: int | None = None,
         **kwargs,
     ):
-        if map_name == "RANDOM":
-            desc = generate_map(**kwargs, seed=seed)
-        if map_name == "8x8":
-            desc = generate_map(
-                p=0.5, shape=(8, 8), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
-            )
-        if map_name == "16x16":
-            desc = generate_map(
-                p=0.5, shape=(16, 16), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
-            )
-        if map_name == "9x9":
-            desc = generate_map(
-                p=0.5, shape=(9, 9), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
-            )
-        if map_name == "27x27":
-            desc = generate_map(
-                p=0.5, shape=(27, 27), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
-            )
+        if desc is None:
+            if map_name == "RANDOM":
+                desc = generate_map(**kwargs, seed=seed)
+            else:
+                rows, cols = map(int, map_name.split("x"))
+                desc = generate_map(
+                    p=0.5, shape=(rows, cols), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=seed
+                )
+
+        if fail_on_out_of_bounds:
+            desc = ["H" + row + "H" for row in desc]
+            desc = ["H" * (len(desc[0]))] + desc + ["H" * (len(desc[0]))]
 
         super().__init__(render_mode, desc, map_name, is_slippery)
         self.action_space = spaces.Discrete(4)
+        self.fail_on_out_of_bounds = fail_on_out_of_bounds
 
     def render(self) -> npt.NDArray[np.uint8]:
         rendered = super().render()
         if self.render_mode == "rgb_array":
-            rendered = rendered[: self.cell_size[0] * self.nrow, : self.cell_size[1] * self.ncol]  # type: ignore
+            rendered = rendered[: self.cell_size[1] * self.nrow, : self.cell_size[0] * self.ncol]  # type: ignore
+        if self.fail_on_out_of_bounds:
+            rendered = rendered[self.cell_size[1] : -self.cell_size[1], self.cell_size[0] : -self.cell_size[0]]  # type: ignore
         return rendered  # type: ignore
 
 
@@ -77,6 +75,8 @@ class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
+        if self.unwrapped.fail_on_out_of_bounds:
+            map_shape = (map_shape[0] - 2, map_shape[1] - 2)
         self.observation_space = (
             spaces.Box(low=0, high=max(map_shape), shape=(2,), dtype=np.uint8)
             if not one_hot
@@ -86,13 +86,20 @@ class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
         y, x = divmod(self.unwrapped.s, self.unwrapped.ncol)  # type: ignore
         if not self.one_hot:
-            return np.array([y, x], dtype=np.uint8)
+            if self.fail_on_out_of_bounds:
+                y, x = y - 1, x - 1
+            obs = np.array([y, x], dtype=np.uint8)
+            return obs
         one_hot = np.zeros((1, self.unwrapped.nrow, self.unwrapped.ncol), dtype=np.uint8)  # type: ignore
         one_hot[0, y, x] = 1
+        if self.unwrapped.fail_on_out_of_bounds:
+            one_hot = one_hot[:, 1:-1, 1:-1]
         return one_hot
 
     def observation_inv(self, obs: npt.NDArray[np.uint8]) -> int:
         y, x = np.unravel_index(np.argmax(obs[0]), obs.shape[1:]) if self.one_hot else obs
+        if self.unwrapped.fail_on_out_of_bounds:
+            y, x = y + 1, x + 1  # type: ignore
         return int(y * self.unwrapped.ncol + x)  # type: ignore
 
 
@@ -103,6 +110,8 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
+        if self.unwrapped.fail_on_out_of_bounds:
+            map_shape = (map_shape[0] - 2, map_shape[1] - 2)
         self.observation_space = (
             spaces.Box(low=0, high=1, shape=(4, *map_shape), dtype=np.uint8)
             if one_hot
@@ -123,11 +132,15 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         Y, X = np.indices(map.shape)
         one_hot_map[map, Y, X] = 1
         one_hot_map = one_hot_map[[0, 2, 3], :, :]  # remove the 1="F"|"S" channel
+        if self.unwrapped.fail_on_out_of_bounds:
+            one_hot_map = one_hot_map[:, 1:-1, 1:-1]
         return one_hot_map
 
     def observation_inv(self, obs: npt.NDArray[np.uint8]) -> int:
         agent_idx = np.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
         y, x = np.unravel_index(agent_idx, obs.shape[1:])
+        if self.unwrapped.fail_on_out_of_bounds:
+            y, x = y + 1, x + 1  # type: ignore
         return int(y) * self.unwrapped.ncol + int(x)
 
 
@@ -135,6 +148,8 @@ class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper):
         super().__init__(env)  # type: ignore
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
+        if self.unwrapped.fail_on_out_of_bounds:
+            map_shape = (map_shape[0] - 2, map_shape[1] - 2)
         self.observation_space = spaces.Box(low=0, high=255, shape=(3, *map_shape), dtype=np.uint8)
 
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:

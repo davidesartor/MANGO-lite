@@ -21,6 +21,8 @@ def plot_map(env: FrozenLakeWrapper):
 
 def plot_grid(env: FrozenLakeWrapper, cell_shape: tuple[int, int], alpha=0.2):
     grid_shape = env.unwrapped.desc.shape
+    if env.unwrapped.fail_on_out_of_bounds:
+        grid_shape = tuple(s - 1 for s in grid_shape)
     pixels_in_square = env.unwrapped.cell_size
     pixels_in_cell = tuple(s * c for s, c in zip(cell_shape, pixels_in_square))
 
@@ -43,6 +45,8 @@ def plot_trajectory(trajectory: list[ObsType] | list[int], env: FrozenLakeWrappe
         for start_obs, next_obs in zip(trajectory[:-1], trajectory[1:]):
             y1, x1 = np.unravel_index(start_obs, env.unwrapped.desc.shape)  # type: ignore
             y2, x2 = np.unravel_index(next_obs, env.unwrapped.desc.shape)  # type: ignore
+            if env.unwrapped.fail_on_out_of_bounds:
+                y1, x1, y2, x2 = y1 - 1, x1 - 1, y2 - 1, x2 - 1
             plt.plot(
                 [x1 * square[1] + square[1] // 2, x2 * square[1] + square[1] // 2],
                 [y1 * square[0] + square[0] // 2, y2 * square[0] + square[0] // 2],
@@ -73,10 +77,16 @@ def get_qval(policy: DQNetPolicy, obs_list: list[ObsType]) -> tuple[np.ndarray, 
 
 
 def plot_qval_heatmap(policy: DQNetPolicy, all_obs_list: tuple[list[ObsType], list[bool]], env):
+    grid_shape = env.unwrapped.desc.shape
     obs_list, valid_mask = all_obs_list
     best_qvals, actions = get_qval(policy, obs_list)
     best_qvals[~np.array(valid_mask, dtype=bool)] = np.nan
-    best_qvals = np.array(best_qvals).reshape(env.unwrapped.desc.shape)
+    valid_mask = np.array(valid_mask).reshape(grid_shape)
+    best_qvals = np.array(best_qvals).reshape(grid_shape)
+    if env.unwrapped.fail_on_out_of_bounds:
+        grid_shape = tuple(s - 2 for s in grid_shape)
+        best_qvals = best_qvals[1:-1, 1:-1]
+        valid_mask = valid_mask[1:-1, 1:-1]
 
     cmap = mpl.colormaps.get_cmap("RdYlGn")  # type: ignore
     cmap.set_bad(color="aqua")
@@ -84,8 +94,8 @@ def plot_qval_heatmap(policy: DQNetPolicy, all_obs_list: tuple[list[ObsType], li
     vmin = min((0, np.nanmin(best_qvals)))
     plt.imshow(best_qvals, cmap=cmap, vmin=vmin, vmax=vmax)
     plt.colorbar()
-    Y, X = np.indices(env.unwrapped.desc.shape)
-    for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask):
+    Y, X = np.indices(grid_shape)
+    for y, x, act, is_valid in zip(Y.flatten(), X.flatten(), actions, valid_mask.flatten()):
         if is_valid:
             dy, dx = Actions.to_delta(act)
             # draw arrows for actions in the middle of the cell
