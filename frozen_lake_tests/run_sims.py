@@ -5,14 +5,15 @@ from tqdm import tqdm
 import numpy as np
 
 # parameters for the environment
-map_base = 2
+map_base = 3
 map_scale = 3
-p_frozen = 0.5
-one_shot = True
+p_frozen = None
+one_shot = False
+solved_treshold = 0.95
 
-cuda_idx = None
+cuda_idx = 1
 device = torch.device(f"cuda:{cuda_idx}" if cuda_idx is not None else "cpu")
-run_ids = [7, 8]
+run_ids = [3, 4]
 train_normal_agent = False
 train_mango_agent = True
 train_nomask_mango_agent = False
@@ -31,8 +32,10 @@ def run_sim(run_id, use_mango, mask_state=True):
         map_base, map_scale, p_frozen, one_shot
     )
     p_bar_descr = "training " + ("mango_agent" if use_mango else "normal_agent")
+    if not use_mango:
+        max_episodes *= 5
     randomness = np.concatenate(
-        [np.linspace(1.0, 0.05, annealing_episodes), np.ones(max_episodes) * 0.05]
+        [np.linspace(1.0, 0.1, annealing_episodes), np.ones(max_episodes) * 0.1]
     )
     episode_rewards = [0.0] * 1000
     for r in tqdm(randomness, desc=p_bar_descr, leave=False):
@@ -48,7 +51,7 @@ def run_sim(run_id, use_mango, mask_state=True):
 
         # early stopping when the agent is good enough
         episode_rewards.append(np.sum(rewards))
-        if float(np.mean(episode_rewards[-1000:])) >= 0.95:
+        if float(np.mean(episode_rewards[-1000:])) >= solved_treshold:
             break
     return agent
 

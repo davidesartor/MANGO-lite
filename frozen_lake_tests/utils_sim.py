@@ -9,7 +9,7 @@ from mango import Mango, Agent
 def train_params(
     map_base: int, map_scale: int, p_frozen: float | None, one_shot
 ) -> tuple[int, int, int, int]:
-    max_episodes = 10 * 10**map_scale
+    max_episodes = 10 ** (map_scale + map_base - 1)
     if one_shot and p_frozen is not None:
         max_episodes *= 10
     annealing_episodes = max_episodes // 5
