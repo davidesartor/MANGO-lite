@@ -7,109 +7,65 @@ from mango.protocols import AbstractActions, ObsType, ActType, Transition
 from mango import spaces
 
 
-class Actions(IntEnum):
-    LEFT = 0
-    DOWN = 1
-    RIGHT = 2
-    UP = 3
-    TASK = 4
-
-    def to_delta(self) -> tuple[int, int]:
-        return {
-            Actions.LEFT: (0, -1),
-            Actions.DOWN: (1, 0),
-            Actions.RIGHT: (0, 1),
-            Actions.UP: (-1, 0),
-            Actions.TASK: (0, 0),
-        }[self]
-
-
 @dataclass(eq=False, slots=True, frozen=True, repr=True)
-class SubGridMovement(AbstractActions):
+class GridMovement:
     cell_shape: tuple[int, int]
-    grid_shape: tuple[int, int]
-    agent_channel: Optional[int] = None
-    invalid_channel: Optional[int] = None
-    mask_state: bool = True
-    success_reward: float = 0.75
-    failure_reward: float = -0.75
-    step_reward: float = -0.0
-    termination_reward: float = +0.25
+    target_delta: tuple[int, int]
 
-    action_space: ClassVar = spaces.Discrete(len(Actions))
+    def abstract(self, obs: ObsType) -> tuple[int, int]:
+        # assume obs has shape (C, Y, X) and the agent pos in 1hot encoded in channel 0
+        idx = int(np.argmax(obs[0, :, :]))
+        y, x = divmod(idx, obs.shape[1])
+        return y // self.cell_shape[0], x // self.cell_shape[1]
 
-    def obs2coord(self, obs: ObsType) -> tuple[int, int]:
-        if self.agent_channel is not None:
-            idx = int(np.argmax(obs[self.agent_channel, :, :]))
-            y, x = idx // self.grid_shape[1], idx % self.grid_shape[1]
+    def beta(self, trajectory: list[Transition]) -> bool:
+        start = self.abstract(trajectory[0].start_obs)
+        end = self.abstract(trajectory[-1].next_obs)
+        return start != end
+
+    def reward(self, trajectory: list[Transition]) -> float:
+        start = self.abstract(trajectory[0].start_obs)
+        end = self.abstract(trajectory[-1].next_obs)
+        target = tuple(s + d for s, d in zip(start, self.target_delta))
+
+        if start == target:
+            return -0.0  # no action, no reward
+
+        if end == target:
+            return 0.5 if transition.terminated else 1.0
         else:
-            y, x = obs
-        return int(y // self.cell_shape[0]), int(x // self.cell_shape[1])
+            return -1.0
 
-    def deltayx(self, start_obs: ObsType, next_obs: ObsType) -> tuple[int, int]:
-        start_y, start_x = self.obs2coord(start_obs)
-        next_y, next_x = self.obs2coord(next_obs)
-        return next_y - start_y, next_x - start_x
+    def mask(self, obs: ObsType) -> ObsType:
+        padded_shape = (obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2)
+        padded_obs = np.zeros_like(obs, shape=padded_shape)
+        padded_obs[:-1, 1:-1, 1:-1] = obs
+        padded_obs[-1, 1:-1, 1:-1] = 1
 
-    def beta(self, comand: ActType, transition: Transition) -> bool:
-        delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
-        moved = (delta_x != 0) or (delta_y != 0)
-        if moved or transition.action == Actions.TASK:
-            return True
-        if comand == Actions.TASK and transition.terminated:
-            return True
-        return False
-
-    def has_failed(self, comand: ActType, start_obs: ObsType, next_obs: ObsType) -> bool:
-        delta_y, delta_x = self.deltayx(start_obs, next_obs)
-        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
-        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
-        moved = (delta_x != 0) or (delta_y != 0)
-        return moved and not success
-
-    def reward(self, comand: ActType, transition: Transition) -> float:
-        delta_y, delta_x = self.deltayx(transition.start_obs, transition.next_obs)
-        expected_delta_y, expected_delta_x = Actions.to_delta(Actions(int(comand)))
-        moved = (delta_x != 0) or (delta_y != 0)
-        success = (delta_y == expected_delta_y) and (delta_x == expected_delta_x)
-
-        if comand != Actions.TASK:
-            if success:
-                reward = self.success_reward
-            elif not moved:
-                reward = self.step_reward
-            else:
-                reward = self.failure_reward
-        else:
-            reward = transition.reward if not moved else self.failure_reward
-
-        # trick to decouple the training of policy,
-        # equivalent to setting qvalues[beta and not term] = termination_reward/gamma
-        beta = self.beta(comand, transition)
-        if beta and not transition.terminated:
-            reward += self.termination_reward
-        return reward
-
-    def mask(self, comand: ActType, obs: ObsType) -> ObsType:
-        if self.agent_channel is None or not self.mask_state:
-            return obs
-
-        if self.invalid_channel is None:
-            padded_shape = (obs.shape[0] + 1, obs.shape[1] + 2, obs.shape[2] + 2)
-            padded_obs = np.zeros_like(obs, shape=padded_shape)
-            padded_obs[:-1, 1:-1, 1:-1] = obs
-            padded_obs[-1, 1:-1, 1:-1] = 1
-        else:
-            padded_shape = (obs.shape[0], obs.shape[1] + 2, obs.shape[2] + 2)
-            padded_obs = np.zeros_like(obs, shape=padded_shape)
-            padded_obs[self.invalid_channel] = 1
-            padded_obs[:, 1:-1, 1:-1] = obs
-
-        y, x = self.obs2coord(obs)
-        d_y, d_x = Actions.to_delta(Actions(int(comand)))
-        y_min_padd = y * self.cell_shape[0] + 1 + min(0, d_y)
-        y_max_padd = y_min_padd + self.cell_shape[0] + abs(d_y)
-        x_min_padd = x * self.cell_shape[1] + 1 + min(0, d_x)
-        x_max_padd = x_min_padd + self.cell_shape[1] + abs(d_x)
+        y, x = self.abstract(obs)
+        y_min_padd = y * self.cell_shape[0] + 1 + min(0, self.d_y)
+        y_max_padd = y_min_padd + self.cell_shape[0] + abs(self.d_y)
+        x_min_padd = x * self.cell_shape[1] + 1 + min(0, self.d_x)
+        x_max_padd = x_min_padd + self.cell_shape[1] + abs(self.d_x)
         masked_obs = padded_obs[:, y_min_padd:y_max_padd, x_min_padd:x_max_padd]
         return masked_obs
+
+
+class MoveLeft(GridMovement):
+    def __init__(self, cell_shape: tuple[int, int]):
+        super().__init__(cell_shape, d_y=0, d_x=-1)
+
+
+class MoveDown(GridMovement):
+    def __init__(self, cell_shape: tuple[int, int]):
+        super().__init__(cell_shape, d_y=1, d_x=0)
+
+
+class MoveRight(GridMovement):
+    def __init__(self, cell_shape: tuple[int, int]):
+        super().__init__(cell_shape, d_y=0, d_x=1)
+
+
+class MoveUp(GridMovement):
+    def __init__(self, cell_shape: tuple[int, int]):
+        super().__init__(cell_shape, d_y=-1, d_x=0)

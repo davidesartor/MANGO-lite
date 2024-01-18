@@ -18,6 +18,19 @@ class Transition(NamedTuple):
     reward: float
     terminated: bool
     truncated: bool
+    steps: list[Transition] = []
+
+    @classmethod
+    def from_steps(cls, comand, steps: Sequence[Transition]) -> Transition:
+        return Transition(
+            start_obs=steps[0].start_obs,
+            action=comand,
+            next_obs=steps[-1].next_obs,
+            reward=sum(step.reward for step in steps),
+            terminated=steps[-1].terminated,
+            truncated=steps[-1].truncated,
+            steps=list(steps),
+        )
 
 
 class StackedTransitions(NamedTuple):
@@ -29,41 +42,6 @@ class StackedTransitions(NamedTuple):
     truncated: torch.Tensor
 
 
-class AbstractTransition(NamedTuple):
-    start_obs: ObsType
-    comand: ActType
-    trajectory: list[ObsType]
-    rewards: list[float]
-    terminated: bool
-    truncated: bool
-
-    def tails(self) -> list[Transition]:
-        rewards = [sum(self.rewards[i:]) for i in range(len(self.rewards))]
-        term, trunc = self.terminated, self.truncated
-        end_obs = self.trajectory[-1]
-        return [
-            Transition(start_obs, self.comand, end_obs, reward, term, trunc)
-            for start_obs, reward in zip(self.trajectory[:-1], rewards)
-        ]
-
-    @classmethod
-    def from_lower_steps(
-        cls, comand: ActType, transitions: Sequence[AbstractTransition]
-    ) -> AbstractTransition:
-        if any(t.terminated or t.truncated for t in transitions[:-1]):
-            raise ValueError("Only the last transition can be terminated or truncated")
-        if any(t1.trajectory[-1] != t2.start_obs for t1, t2 in zip(transitions, transitions[1:])):
-            raise ValueError("Each transition must start where the previous one ended")
-        return cls(
-            start_obs=transitions[0].start_obs,
-            comand=comand,
-            trajectory=list(chain.from_iterable(t.trajectory for t in transitions)),
-            rewards=list(chain.from_iterable(t.rewards for t in transitions)),
-            terminated=transitions[-1].terminated,
-            truncated=transitions[-1].truncated,
-        )
-
-
 class Trainer(Protocol):
     def train(self, transitions: StackedTransitions) -> float:
         ...
@@ -73,19 +51,15 @@ class Policy(Protocol):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
 
-    @classmethod
-    def make(cls, action_space: spaces.Discrete, **kwargs) -> tuple[Policy, Trainer]:
-        ...
-
 
 class AbstractAction(Protocol):
     def mask(self, obs: ObsType) -> ObsType:
         ...
 
-    def beta(self, transition: AbstractTransition) -> bool:
+    def beta(self, transition: Transition) -> bool:
         ...
 
-    def reward(self, transition: AbstractTransition) -> float:
+    def reward(self, transition: Transition) -> float:
         ...
 
 

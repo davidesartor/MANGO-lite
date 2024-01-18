@@ -1,11 +1,11 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence, NamedTuple
 import math
 from . import spaces, utils
-from .protocols import Environment, AbstractActions, DynamicPolicy, OptionTransition, Policy
-from .protocols import ObsType, ActType, Transition
+from .protocols import AbstractAction, Policy
+from .protocols import Environment, ObsType, ActType, Transition
 from .policies.experiencereplay import ExperienceReplay, TransitionTransform
-from .policies.policymapper import PolicyMapper
 
 
 class MangoEnv:
@@ -14,30 +14,16 @@ class MangoEnv:
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(int(self.environment.action_space.n) + 1)
+        return self.environment.action_space
 
     @property
     def observation_space(self) -> spaces.Space:
         return self.environment.observation_space
 
-    def step(self, comand: ActType, randomness=0.0, episode_length=math.inf) -> OptionTransition:
-        trajectory = [self.obs]
-        if comand in self.environment.action_space:
-            self.obs, reward, term, trunc, info = self.environment.step(comand)
-            trajectory.append(self.obs)
-        else:
-            reward, term, trunc, info = 0.0, False, False, {}
-        if episode_length <= 1:
-            trunc = True
-        return OptionTransition(
-            comand=comand,
-            trajectory=trajectory,
-            rewards=[reward],
-            failed=False,
-            beta=True,
-            terminated=term,
-            truncated=trunc,
-        )
+    def step(self, comand: ActType, randomness=0.0) -> Transition:
+        start_obs = self.obs
+        self.obs, reward, term, trunc, info = self.environment.step(comand)
+        return Transition(start_obs, comand, self.obs, reward, term, trunc)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
@@ -45,139 +31,78 @@ class MangoEnv:
         self.obs, info = self.environment.reset(seed=seed, options=options)
         return self.obs, info
 
-    def __repr__(self) -> str:
-        return utils.torch_style_repr(
-            self.__class__.__name__, dict(environment=str(self.environment))
-        )
-
 
 class MangoLayer(MangoEnv):
     def __init__(
         self,
         lower_layer: MangoEnv,
-        abs_actions: AbstractActions,
-        dynamic_policy_cls: type[DynamicPolicy],
-        dynamic_policy_params: dict[str, Any],
+        abstract_actions: list[AbstractAction],
+        policies: list[Policy],
     ):
-        self.lower_layer = lower_layer
-        self.abs_actions = abs_actions
-        self.policy = dynamic_policy_cls.make(
-            comand_space=self.abs_actions.action_space,
-            action_space=self.lower_layer.action_space,
-            **dynamic_policy_params,
-        )
+        if len(abstract_actions) != len(policies):
+            raise ValueError("Mismatch between number of abstract actions and policies")
+        self.environment = lower_layer
+        self.abstract_actions = abstract_actions
+        self.policies = policies
 
     @property
     def action_space(self) -> spaces.Discrete:
-        return self.abs_actions.action_space
-
-    @property
-    def observation_space(self) -> spaces.Space:
-        return self.lower_layer.observation_space
+        return spaces.Discrete(len(self.abstract_actions))
 
     @property
     def obs(self) -> ObsType:
-        return self.lower_layer.obs
+        return self.environment.obs
 
-    def step(self, comand: ActType, randomness=0.0, episode_length=math.inf) -> OptionTransition:
-        trajectory = [self.obs]
-        seen_obs = [self.obs]
-        rewards = []
+    def step(self, comand: ActType, randomness=0.0) -> Transition:
+        lower_steps: list[Transition] = []
         while True:
-            obs_masked = self.abs_actions.mask(comand, self.obs)
-            action = self.policy.get_action(comand, obs_masked, randomness)
-            lower_step = self.lower_layer.step(
-                comand=action,
-                randomness=randomness**2,
-                episode_length=episode_length - len(trajectory),
-            )
-            trajectory += lower_step.trajectory[1:]
-            rewards += lower_step.rewards
+            obs_masked = self.abstract_actions[comand].mask(self.obs)
+            action = self.policies[comand].get_action(obs_masked, randomness)
+            lower_steps.append(self.environment.step(action))
 
-            term, trunc = lower_step.terminated, lower_step.truncated
-            beta = self.abs_actions.beta(comand, lower_step.flatten())
-
-            if sum([(self.obs == obs).all() for obs in seen_obs]) > 1:
-                trunc = True
-            seen_obs.append(self.obs)
-
-            if randomness > 0.0:
-                if lower_step.beta and not lower_step.failed:
-                    for replay_memory in self.replay_memory.values():
-                        replay_memory.extend(lower_step.all_transitions())
-
-            if term or trunc or beta:
+            if lower_steps[-1].terminated or lower_steps[-1].truncated:
+                break
+            if self.abstract_actions[comand].beta(lower_steps[-1]):
+                break
+            # truncate episode when looping more than once
+            if sum([(self.obs == step.start_obs).all() for step in lower_steps]) > 1:
                 break
 
-        has_failed = self.abs_actions.has_failed(comand, trajectory[0], trajectory[-1])
-        option_resuts = OptionTransition(comand, trajectory, rewards, has_failed, beta, term, trunc)
-
-        if beta or term or trunc:
-            intrinsic_reward = self.abs_actions.reward(comand, option_resuts.flatten())
-            self.intrinsic_reward_log[comand].append(intrinsic_reward)
-            self.episode_length_log.append(len(trajectory))
-
-        return option_resuts
-
-    def train(self, action: Optional[ActType | Sequence[ActType]] = None):
-        if action is None:
-            action = [act for act in self.action_space]
-        to_train = action if isinstance(action, Sequence) else [action]
-        for action in to_train:
-            if self.replay_memory[action].can_sample():
-                train_info = self.policy.train(
-                    comand=action,
-                    transitions=self.replay_memory[action].sample(),
-                )
-                self.replay_memory[action].update_priorities_last_sampled(train_info.td)
-                self.train_loss_log[action].append(train_info.loss)
-
-    def reset(
-        self, *, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> tuple[ObsType, dict]:
-        if options is not None:
-            if options.get("replay_memory", False):
-                self.replay_memory = {
-                    act: ExperienceReplay(transform=TransitionTransform(self.abs_actions, act))
-                    for act in self.action_space
-                }
-            if options.get("logs", False):
-                self.intrinsic_reward_log = tuple([] for _ in self.action_space)
-                self.train_loss_log = tuple([] for _ in self.action_space)
-                self.episode_length_log = []
-        return self.lower_layer.reset(seed=seed, options=options)
-
-    def __repr__(self) -> str:
-        return utils.torch_style_repr(
-            self.__class__.__name__,
-            dict(abs_actions=str(self.abs_actions), policy=str(self.policy)),
-        )
+        return Transition.from_steps(comand, lower_steps)
 
 
-class Mango(MangoEnv):
+class Mango:
     def __init__(
         self,
         environment: Environment,
-        abstract_actions: Sequence[AbstractActions],
         policy_cls: type[Policy],
-        dynamic_policy_cls: type[DynamicPolicy] = PolicyMapper,
         policy_params: dict[str, Any] = {},
-        dynamic_policy_params: dict[str, Any] | Sequence[dict[str, Any]] = {},
     ) -> None:
-        if not isinstance(dynamic_policy_params, Sequence):
-            dynamic_policy_params = [dynamic_policy_params for _ in abstract_actions]
         self.environment = MangoEnv(environment)
         self.abstract_layers: list[MangoLayer] = []
-        for actions, params in zip(abstract_actions, dynamic_policy_params):
-            self.abstract_layers.append(
-                MangoLayer(
-                    abs_actions=actions,
-                    lower_layer=self.layers[-1],
-                    dynamic_policy_cls=dynamic_policy_cls,
-                    dynamic_policy_params=params,
-                )
-            )
         self.policy = policy_cls.make(action_space=self.layers[-1].action_space, **policy_params)
+        self.reset(options={"replay_memory": True, "logs": True})
+
+    def add_abstract_layer(
+        self,
+        abstract_actions: AbstractActions,
+        policy_cls: type[Policy],
+        agent_policy_params: dict[str, Any] = {},
+        layer_policy_params: dict[str, Any] = {},
+    ) -> None:
+        self.abstract_layers.append(
+            MangoLayer(
+                abs_actions=abstract_actions,
+                lower_layer=self.layers[-1],
+                dynamic_policy_cls=PolicyMapper,
+                dynamic_policy_params=dict(
+                    policy_cls=policy_cls, policy_params=layer_policy_params
+                ),
+            )
+        )
+        self.policy = policy_cls.make(
+            action_space=self.layers[-1].action_space, **agent_policy_params
+        )
         self.reset(options={"replay_memory": True, "logs": True})
 
     @property

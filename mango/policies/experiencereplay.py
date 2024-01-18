@@ -6,6 +6,16 @@ import torch
 from mango.protocols import AbstractActions, ActType, Transition
 
 
+def tails(self) -> list[Transition]:
+    rewards = [sum(self.rewards[i:]) for i in range(len(self.rewards))]
+    term, trunc = self.terminated, self.truncated
+    end_obs = self.trajectory[-1]
+    return [
+        Transition(start_obs, self.comand, end_obs, reward, term, trunc)
+        for start_obs, reward in zip(self.trajectory[:-1], rewards)
+    ]
+
+
 def to_tensor(self, transitions: Sequence[Transition]):
     obs_dtype = torch.get_default_dtype()
     action_dtype = torch.int64
@@ -34,28 +44,6 @@ class CircularBuffer:
         self.size = min(self.size + 1, self.capacity)
         self.memory[self.last_in] = item
         return self.last_in
-
-    def __getitem__(self, index: int) -> Any:
-        return self.memory[index]
-
-
-@dataclass(eq=False, slots=True, repr=True)
-class ExponentialBuffer:
-    capacity: int = 1024 * 16
-    memory: npt.NDArray[Any] = field(init=False)
-    size: int = field(init=False, default=0)
-
-    def __post_init__(self):
-        self.memory = np.zeros(self.capacity, dtype=object)
-
-    def push(self, item: Any) -> int:
-        if self.size < self.capacity:
-            idx = self.size
-            self.size += 1
-        else:
-            idx = np.random.randint(self.capacity)
-        self.memory[idx] = item
-        return idx
 
     def __getitem__(self, index: int) -> Any:
         return self.memory[index]
