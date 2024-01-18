@@ -6,6 +6,19 @@ import torch
 from mango.protocols import AbstractActions, ActType, Transition
 
 
+def to_tensor(self, transitions: Sequence[Transition]):
+    obs_dtype = torch.get_default_dtype()
+    action_dtype = torch.int64
+    device = next(self.net.parameters()).device
+    start_obs, action, next_obs, reward, terminated, truncated = zip(*transitions)
+    start_obs = torch.as_tensor(torch.stack(start_obs), dtype=obs_dtype, device=device)
+    action = torch.as_tensor(np.array(action), dtype=action_dtype, device=device)
+    next_obs = torch.as_tensor(np.stack(next_obs), dtype=obs_dtype, device=device)
+    reward = torch.as_tensor(np.array(reward), dtype=torch.float32, device=device)
+    terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=device)
+    return start_obs, action, next_obs, reward, terminated, truncated
+
+
 @dataclass(eq=False, slots=True, repr=True)
 class CircularBuffer:
     capacity: int = 1024 * 16
