@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Protocol, NamedTuple, Any, Sequence
+from itertools import chain
 import torch
 from . import spaces
 
@@ -7,7 +8,7 @@ from . import spaces
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
 ObsType = torch.Tensor
-ActType = torch.Tensor
+ActType = int
 
 
 class Transition(NamedTuple):
@@ -29,20 +30,38 @@ class StackedTransitions(NamedTuple):
 
 
 class AbstractTransition(NamedTuple):
+    start_obs: ObsType
+    comand: ActType
     trajectory: list[ObsType]
     rewards: list[float]
     terminated: bool
     truncated: bool
-    info: dict[str, Any] = {}
 
     def tails(self) -> list[Transition]:
         rewards = [sum(self.rewards[i:]) for i in range(len(self.rewards))]
         term, trunc = self.terminated, self.truncated
         end_obs = self.trajectory[-1]
         return [
-            Transition(start_obs, self.comand, end_obs, reward, term, trunc, self.info)
+            Transition(start_obs, self.comand, end_obs, reward, term, trunc)
             for start_obs, reward in zip(self.trajectory[:-1], rewards)
         ]
+
+    @classmethod
+    def from_lower_steps(
+        cls, comand: ActType, transitions: Sequence[AbstractTransition]
+    ) -> AbstractTransition:
+        if any(t.terminated or t.truncated for t in transitions[:-1]):
+            raise ValueError("Only the last transition can be terminated or truncated")
+        if any(t1.trajectory[-1] != t2.start_obs for t1, t2 in zip(transitions, transitions[1:])):
+            raise ValueError("Each transition must start where the previous one ended")
+        return cls(
+            start_obs=transitions[0].start_obs,
+            comand=comand,
+            trajectory=list(chain.from_iterable(t.trajectory for t in transitions)),
+            rewards=list(chain.from_iterable(t.rewards for t in transitions)),
+            terminated=transitions[-1].terminated,
+            truncated=transitions[-1].truncated,
+        )
 
 
 class Trainer(Protocol):
