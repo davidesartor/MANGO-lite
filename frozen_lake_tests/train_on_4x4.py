@@ -1,35 +1,62 @@
 import os
 import sys
+from typing import Any
 import torch
 from tqdm import tqdm
 import numpy as np
 
 from mango.environments import frozen_lake
+from mango.mango import Mango
+from mango.policies.dqnet import DQNetPolicy
 
 cuda_idx = 2
 device = torch.device(f"cuda:{cuda_idx}" if cuda_idx is not None else "cpu")
+run_id = 0
+
+lr = 1e-3
+gamma = 0.95
+
 
 # make environment
-env_params = dict(
-    map_name="RANDOM", p=None, shape=(4, 4), start_pos=[(0, 0)], goal_pos=[(-1, -1)], seed=0
-)
-env = frozen_lake.CustomFrozenLakeEnv()
-env = frozen_lake.wrappers.ReInitOnReset(env, **params)
+env_params: dict[str, Any] = dict(map_name="RANDOM", p=None, shape=(4, 4), seed=run_id)
+env = frozen_lake.CustomFrozenLakeEnv(**env_params)
+env = frozen_lake.wrappers.ReInitOnReset(env, **env_params)
 env = frozen_lake.wrappers.TensorObservation(env, one_hot=True)
 
 
-def make_env(
-    map_base: int, map_scale: int, p_frozen: float | None, one_shot, seed: Optional[int] = None
-):
-    return env
+def net_params(conv_filters: int, field_size: int, device) -> dict[str, Any]:
+    """Get the params a minimal conv network with a given receptive field size."""
+    n_layers = 2 * int(np.log2(field_size)) - 1  # ConvEncoder pools by 2 every other layer
+    return dict(
+        hidden_channels=[conv_filters] * n_layers,
+        hidden_features=[],
+        device=device,
+    )
 
 
-# create the environment and the agent
-env = utils_sim.make_env(map_base, map_scale, p_frozen, one_shot, seed=run_id)
-if use_mango:
-    agent = utils_sim.make_mango_agent(env, map_base, map_scale, mask_state, device=device)
-else:
-    agent = utils_sim.make_agent(env, map_base, map_scale, device=device)
+policy_params = [
+    dict(lr=1e-3, gamma=0.95, net_params=net_params(conv_filters=8, field_size=4, device=device))
+    for layer in range(2)
+]
+
+
+dict(policy_cls=DQNetPolicy, policy_params=policy_params(map_base, map_scale, lr, gamma, device))
+
+mango_agent = Mango(
+    environment=env,
+    abstract_actions=abstract_actions(map_base, map_scale, cell_scales, mask_state),
+    policy_cls=DQNetPolicy,
+    policy_params=dict(
+        lr=lr,
+        gamma=gamma,
+        net_params=net_params(conv_filters=8, field_size=4, device=device),
+    ),
+    dynamic_policy_params=[
+        dynamic_policy_params(map_base, scale, lr, gamma, device) for scale in cell_scales
+    ],
+)
+return mango_agent
+
 
 # train loop
 annealing_episodes, max_episodes, train_steps, episode_length = utils_sim.train_params(
