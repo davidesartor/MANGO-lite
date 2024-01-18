@@ -20,8 +20,16 @@ class Transition(NamedTuple):
     truncated: bool
     steps: list[Transition] = []
 
+    @property
+    def trajectory(self) -> list[ObsType]:
+        if not self.steps:
+            return [self.start_obs, self.next_obs]
+        return [self.start_obs] + list(
+            chain.from_iterable(step.trajectory[1:] for step in self.steps)
+        )
+
     @classmethod
-    def from_steps(cls, comand, steps: Sequence[Transition]) -> Transition:
+    def from_steps(cls, comand: ActType, steps: Sequence[Transition]) -> Transition:
         return Transition(
             start_obs=steps[0].start_obs,
             action=comand,
@@ -56,10 +64,10 @@ class AbstractAction(Protocol):
     def mask(self, obs: ObsType) -> ObsType:
         ...
 
-    def beta(self, transition: Transition) -> bool:
+    def beta(self, transition: Sequence[Transition]) -> bool:
         ...
 
-    def reward(self, transition: Transition) -> float:
+    def reward(self, transition: Sequence[Transition]) -> float:
         ...
 
 
