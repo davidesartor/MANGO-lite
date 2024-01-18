@@ -103,20 +103,22 @@ def random_board(
 
 def generate_map(
     shape: tuple[int, int] = (8, 8),
-    p: float = 0.8,
+    p: float | None = None,
     start_pos: Sequence[tuple[int, int]] = [],
     goal_pos: Sequence[tuple[int, int]] = [],
     start_anywhere=False,
     mirror=False,
     seed: Optional[int] = None,
 ):
+    np_rng = np.random.default_rng(seed)
+    if p is None:
+        p = np.random.uniform(0.3, 1.0)
+
     if p < 0 or p > 1:
         raise ValueError("p must be in [0, 1]")
 
     start_pos = [(r % shape[0], c % shape[1]) for r, c in start_pos]
     goal_pos = [(r % shape[0], c % shape[1]) for r, c in goal_pos]
-
-    np_rng = np.random.default_rng(seed)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

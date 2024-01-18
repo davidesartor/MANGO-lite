@@ -22,8 +22,6 @@ def train_params(
 def env_params(
     map_base: int, map_scale: int, p_frozen: float | None, seed: Optional[int] = None
 ) -> dict[str, Any]:
-    if p_frozen is None:
-        return dict(map_name=f"{map_base**map_scale}x{map_base**map_scale}", seed=0)
     return dict(
         map_name="RANDOM",
         p=p_frozen,
