@@ -75,6 +75,7 @@ class Agent:
 
     def run_episode(self, randomness: float = 0.0) -> Transition:
         self.environment.reset()
+
         steps: list[Transition] = []
         while True:
             action = self.policy.get_action(self.environment.obs, randomness)
