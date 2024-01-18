@@ -2,6 +2,7 @@ from typing import Any, Protocol
 import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
+import torch
 from gymnasium.envs.toy_text.frozen_lake import FrozenLakeEnv
 
 from .utils import generate_map
@@ -142,6 +143,11 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         if self.unwrapped.fail_on_out_of_bounds:
             y, x = y + 1, x + 1  # type: ignore
         return int(y) * self.unwrapped.ncol + int(x)
+
+
+class ToTorch(FrozenLakeWrapper, gym.ObservationWrapper):
+    def observation(self, observation: Any) -> torch.Tensor:
+        return torch.as_tensor(observation, dtype=torch.get_default_dtype())
 
 
 class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
