@@ -71,19 +71,17 @@ def random_board(
     contains: Optional[Sequence[tuple[int, int]]] = None,
     np_rng=np.random.default_rng(),
 ) -> npt.NDArray[np.bool_]:
-    frozen = np.zeros(shape, dtype=np.bool_)
+    if contains is None:
+        contains = [sample_position_in(np.ones(shape, dtype=np.bool_), np_rng=np_rng)]
+
     need_to_connect = np.zeros(shape, dtype=np.bool_)
     start = np.zeros(shape, dtype=np.bool_)
-    if contains is not None and contains:
-        start[contains[0]] = True
-        for c in contains:
-            need_to_connect[c] = True
-    else:
-        start[sample_position_in(np.ones(shape, dtype=np.bool_), np_rng=np_rng)] = True
+    start[contains[0]] = True
+    for c in contains:
+        need_to_connect[c] = True
 
-    connected = start.copy()
     frozen = np_rng.random(shape) < p
-    connected = reachable_from(connected, frozen | connected | need_to_connect)
+    connected = reachable_from(start, frozen | start | need_to_connect)
     while True:
         if (
             connected.sum() < (p - 0.05) * connected.size
