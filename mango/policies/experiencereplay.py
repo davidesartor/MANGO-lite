@@ -1,108 +1,56 @@
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
-import numpy as np
-import numpy.typing as npt
 import torch
-from mango.protocols import AbstractActions, ActType, Transition
+from mango.protocols import Transition, StackedTransitions
 
 
-def tails(self) -> list[Transition]:
-    rewards = [sum(self.rewards[i:]) for i in range(len(self.rewards))]
-    term, trunc = self.terminated, self.truncated
-    end_obs = self.trajectory[-1]
-    return [
-        Transition(start_obs, self.comand, end_obs, reward, term, trunc)
-        for start_obs, reward in zip(self.trajectory[:-1], rewards)
-    ]
-
-
-def to_tensor(self, transitions: Sequence[Transition]):
-    obs_dtype = torch.get_default_dtype()
-    action_dtype = torch.int64
-    device = next(self.net.parameters()).device
-    start_obs, action, next_obs, reward, terminated, truncated = zip(*transitions)
-    start_obs = torch.as_tensor(torch.stack(start_obs), dtype=obs_dtype, device=device)
-    action = torch.as_tensor(np.array(action), dtype=action_dtype, device=device)
-    next_obs = torch.as_tensor(np.stack(next_obs), dtype=obs_dtype, device=device)
-    reward = torch.as_tensor(np.array(reward), dtype=torch.float32, device=device)
-    terminated = torch.as_tensor(np.array(terminated), dtype=torch.bool, device=device)
-    return start_obs, action, next_obs, reward, terminated, truncated
-
-
-@dataclass(eq=False, slots=True, repr=True)
 class CircularBuffer:
-    capacity: int = 1024 * 16
-    memory: npt.NDArray[Any] = field(init=False)
-    last_in: int = field(init=False, default=-1)
-    size: int = field(init=False, default=0)
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        self.last_in = -1
+        self.size = 0
 
-    def __post_init__(self):
-        self.memory = np.zeros(self.capacity, dtype=object)
+    def push(self, item: torch.Tensor) -> int:
+        if not hasattr(self, "memory"):
+            self.memory = torch.empty((self.capacity, *item.shape), dtype=item.dtype)
 
-    def push(self, item: Any) -> int:
-        self.last_in = (self.last_in + 1) % self.capacity
-        self.size = min(self.size + 1, self.capacity)
+        self.last_in = (self.last_in + 1) % len(self.memory)
+        self.size = min(self.size + 1, len(self.memory))
         self.memory[self.last_in] = item
         return self.last_in
 
-    def __getitem__(self, index: int) -> Any:
-        return self.memory[index]
+    def __getitem__(self, idx: torch.Tensor) -> torch.Tensor:
+        return self.memory[idx]
 
 
-@dataclass(eq=False, slots=True, repr=True)
-class TransitionTransform:
-    abstract_actions: AbstractActions
-    comand: ActType
-
-    def __call__(self, transition: Transition) -> Transition:
-        beta = self.abstract_actions.beta(self.comand, transition)
-        return transition._replace(
-            start_obs=self.abstract_actions.mask(self.comand, transition.start_obs),
-            next_obs=self.abstract_actions.mask(self.comand, transition.next_obs),
-            reward=self.abstract_actions.reward(self.comand, transition),
-            terminated=transition.terminated or beta,
-        )
-
-
-@dataclass(eq=False, slots=True, repr=True)
 class ExperienceReplay:
-    batch_size: int = 64
-    capacity: int = 1024 * 16
-    alpha: float = 0.6
-    transform: Optional[Callable[[Transition], Transition]] = None
-    memory: CircularBuffer = field(init=False)
-    priorities: npt.NDArray[np.floating] = field(init=False)
-    last_sampled: npt.NDArray[np.int64] = field(init=False)
-
-    def __post_init__(self):
+    def __init__(self, batch_size=64, capacity=1024 * 16, alpha=0.6):
+        self.batch_size = batch_size
+        self.capacity = capacity
+        self.alpha = alpha
         self.reset()
 
     def reset(self) -> None:
-        self.memory = CircularBuffer(capacity=self.capacity)
-        self.priorities = np.zeros(self.capacity, dtype=np.floating)
+        self.memory = [CircularBuffer(self.capacity) for _ in "sasrtt"]
+        self.priorities = torch.zeros(self.capacity, dtype=torch.float32)
 
-    def can_sample(self, quantity: Optional[int] = None) -> bool:
-        return self.memory.size >= (quantity or self.batch_size)
+    def can_sample(self) -> bool:
+        assert all(mem.size == self.memory[0].size for mem in self.memory)
+        return self.memory[0].size >= self.batch_size
 
-    def update_priorities_last_sampled(self, temporal_difference: npt.NDArray[np.floating]) -> None:
-        self.priorities[self.last_sampled] = np.abs(temporal_difference) ** self.alpha + 1e-8
+    def update_priorities_last_sampled(self, temporal_difference: torch.Tensor) -> None:
+        prio = torch.abs(temporal_difference) ** self.alpha + 1e-8
+        self.priorities[self.last_sampled] = prio
 
     def push(self, transition: Transition) -> None:
-        if self.transform is not None:
-            transition = self.transform(transition)
-        idx = self.memory.push(transition)
-        self.priorities[idx] = np.max(self.priorities) or 1.0
+        idxs = [mem.push(torch.as_tensor(elem)) for mem, elem in zip(self.memory, transition)]
+        assert all(idx == idxs[0] for idx in idxs)
+        self.priorities[idxs[0]] = self.priorities.max().clip(1.0)
 
     def extend(self, transitions: list[Transition]) -> None:
         for transition in transitions:
             self.push(transition)
 
-    def sample(self, quantity: Optional[int] = None) -> list[Transition]:
-        if not self.can_sample(quantity):
+    def sample(self) -> StackedTransitions:
+        if not self.can_sample():
             raise ValueError("Not enough samples to sample from")
-
-        sample_prob = self.priorities / np.sum(self.priorities)
-        self.last_sampled = np.random.choice(
-            len(sample_prob), size=(quantity or self.batch_size), p=sample_prob
-        )
-        return self.memory[self.last_sampled]
+        self.last_sampled = torch.multinomial(self.priorities, self.batch_size, replacement=False)
+        return StackedTransitions(*(mem[self.last_sampled] for mem in self.memory))

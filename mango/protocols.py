@@ -50,8 +50,13 @@ class StackedTransitions(NamedTuple):
     truncated: torch.Tensor
 
 
+class TrainInfo(NamedTuple):
+    loss: torch.Tensor
+    td: torch.Tensor
+
+
 class Trainer(Protocol):
-    def train(self, transitions: StackedTransitions) -> float:
+    def train(self, transitions: StackedTransitions) -> TrainInfo:
         ...
 
 
