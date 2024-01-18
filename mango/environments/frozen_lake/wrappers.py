@@ -46,7 +46,7 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         return rendered  # type: ignore
 
 
-class FrozenLakeWrapper(gym.Wrapper):
+class FrozenLakeWrapper(gym.Wrapper, CustomFrozenLakeEnv):
     @property
     def unwrapped(self) -> CustomFrozenLakeEnv:
         return super().unwrapped  # type: ignore
@@ -72,7 +72,7 @@ class ReInitOnReset(FrozenLakeWrapper):
 
 
 class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
-    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+    def __init__(self, env: CustomFrozenLakeEnv, one_hot: bool = False):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
@@ -107,19 +107,19 @@ class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
 class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     char2int = {b"S": 1, b"F": 1, b"H": 2, b"G": 3}.get
 
-    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+    def __init__(self, env: CustomFrozenLakeEnv, one_hot=False):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         if self.unwrapped.fail_on_out_of_bounds:
             map_shape = (map_shape[0] - 2, map_shape[1] - 2)
         self.observation_space = (
-            spaces.Box(low=0, high=1, shape=(4, *map_shape), dtype=np.uint8)
+            spaces.Box(low=0, high=1, shape=(4, *map_shape), dtype=np.float32)
             if one_hot
-            else spaces.Box(low=0, high=3, shape=(1, *map_shape), dtype=np.uint8)
+            else spaces.Box(low=0, high=3, shape=(1, *map_shape), dtype=np.float32)
         )
 
-    def observation(self, observation: int) -> npt.NDArray[np.uint8]:
+    def observation(self, observation: int) -> torch.Tensor:
         map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]
         row, col = (
             int(self.unwrapped.s) // self.unwrapped.ncol,
@@ -128,16 +128,16 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         map[row][col] = 0
         map = np.array(map, dtype=np.uint8)
         if not self.one_hot:
-            return map[None, :, :]
+            return torch.as_tensor(map[None, :, :], dtype=torch.get_default_dtype())
         one_hot_map = np.zeros((4, *map.shape), dtype=np.uint8)
         Y, X = np.indices(map.shape)
         one_hot_map[map, Y, X] = 1
         one_hot_map = one_hot_map[[0, 2, 3], :, :]  # remove the 1="F"|"S" channel
         if self.unwrapped.fail_on_out_of_bounds:
             one_hot_map = one_hot_map[:, 1:-1, 1:-1]
-        return one_hot_map
+        return torch.as_tensor(one_hot_map, dtype=torch.get_default_dtype())
 
-    def observation_inv(self, obs: npt.NDArray[np.uint8]) -> int:
+    def observation_inv(self, obs: torch.Tensor) -> int:
         agent_idx = np.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
         y, x = np.unravel_index(agent_idx, obs.shape[1:])
         if self.unwrapped.fail_on_out_of_bounds:
@@ -145,13 +145,8 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         return int(y) * self.unwrapped.ncol + int(x)
 
 
-class ToTorch(FrozenLakeWrapper, gym.ObservationWrapper):
-    def observation(self, observation: Any) -> torch.Tensor:
-        return torch.as_tensor(observation, dtype=torch.get_default_dtype())
-
-
 class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
-    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper):
+    def __init__(self, env: CustomFrozenLakeEnv):
         super().__init__(env)  # type: ignore
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
         if self.unwrapped.fail_on_out_of_bounds:
