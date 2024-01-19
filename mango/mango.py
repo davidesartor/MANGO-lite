@@ -80,6 +80,11 @@ class Agent:
         while True:
             action = self.policy.get_action(self.environment.obs, randomness)
             steps.append(self.environment.step(action, randomness))
+
+            # truncate episode when looping more than once
+            if sum([(steps[-1].next_obs == step.start_obs).all() for step in steps]) > 1:
+                steps[-1] = steps[-1]._replace(truncated=True)
+
             if steps[-1].terminated or steps[-1].truncated:
                 break
         return Transition.from_steps(0, steps)

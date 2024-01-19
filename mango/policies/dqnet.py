@@ -1,10 +1,9 @@
 import copy
-from typing import Any, Sequence
 import numpy as np
 import torch
 
 from mango import spaces
-from mango.protocols import ActType, ObsType, Policy, StackedTransitions, Trainer
+from mango.protocols import ActType, ObsType, Policy, StackedTransitions, Trainer, TrainInfo
 
 
 class DQNetPolicy(Policy):
@@ -33,18 +32,18 @@ class DQNetTrainer(Trainer):
         self.tau = tau
         self.net = net
 
-    def train(self, transitions: StackedTransitions) -> float:
+    def train(self, transitions: StackedTransitions) -> TrainInfo:
         if len(transitions) == 0:
             raise ValueError(f"{self.__class__.__name__}.train received empty transitions list")
         self.net.train()
+        self.soft_update()
         td = self.temporal_difference(transitions)
         loss = torch.nn.functional.smooth_l1_loss(td, torch.zeros_like(td))
-        self.soft_update()
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
         self.net.eval()
-        return loss.item()
+        return TrainInfo(loss=loss, td=td)
 
     def soft_update(self):
         # if has not target_net, copy net to target_net
@@ -60,7 +59,7 @@ class DQNetTrainer(Trainer):
         qval_start = self.net(transitions.start_obs)
         qval_sampled_action = torch.gather(qval_start, 1, transitions.action.unsqueeze(1))
         with torch.no_grad():
-            best_next_action = self.net(transitions.next_obs).qval_next.argmax(dim=1, keepdim=True)
+            best_next_action = self.net(transitions.next_obs).argmax(dim=1, keepdim=True)
             qval_next = self.target_net(transitions.next_obs)
             best_qval_next = torch.gather(qval_next, 1, best_next_action)
             best_qval_next[transitions.terminated] = 0.0
