@@ -8,7 +8,7 @@ from . import spaces
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
 ObsType = torch.Tensor
-ActType = torch.Tensor
+ActType = int
 
 
 class Transition(NamedTuple):

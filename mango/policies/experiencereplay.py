@@ -22,10 +22,11 @@ class CircularBuffer:
 
 
 class ExperienceReplay:
-    def __init__(self, batch_size=64, capacity=1024 * 16, alpha=0.6):
+    def __init__(self, batch_size=64, capacity=1024 * 16, alpha=0.6, out_device=None):
         self.batch_size = batch_size
         self.capacity = capacity
         self.alpha = alpha
+        self.out_device = out_device
         self.reset()
 
     def reset(self) -> None:
@@ -53,4 +54,6 @@ class ExperienceReplay:
         if not self.can_sample():
             raise ValueError("Not enough samples to sample from")
         self.last_sampled = torch.multinomial(self.priorities, self.batch_size, replacement=False)
-        return StackedTransitions(*(mem[self.last_sampled] for mem in self.memory))
+        return StackedTransitions(
+            *(mem[self.last_sampled].to(self.out_device, non_blocking=True) for mem in self.memory)
+        )

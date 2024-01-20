@@ -9,17 +9,13 @@ class MangoEnv:
         self.environment = environment
 
     @property
-    def observation_space(self) -> spaces.Space:
-        return self.environment.observation_space
-
-    @property
     def action_space(self) -> spaces.Discrete:
         return self.environment.action_space
 
     def step(self, comand: ActType, randomness=0.0) -> Transition:
         start_obs = self.obs
         self.obs, reward, term, trunc, info = self.environment.step(int(comand))
-        return Transition(start_obs, comand, self.obs, reward, term, trunc)
+        return Transition(start_obs, comand, self.obs, float(reward), term, trunc)
 
     def reset(
         self, *, seed: Optional[int] = None, options: Optional[dict] = None
