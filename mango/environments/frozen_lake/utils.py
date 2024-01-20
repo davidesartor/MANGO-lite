@@ -4,7 +4,7 @@ import numpy.typing as npt
 import numba
 
 
-@numba.njit
+# @numba.njit
 def connected_components(frozen: npt.NDArray[np.bool_]) -> npt.NDArray[np.int_]:
     """get a boolean mask (1=frozen, 0=lake) and return a tensor of the same shape
     with each element being the index of the connected component the cell belongs to"""

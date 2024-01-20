@@ -5,6 +5,14 @@ from mango.environments import frozen_lake
 from mango.protocols import ObsType, Transition
 
 
+def smooth(signal, window=0.05):
+    window = min((1000, max(3, int(len(signal) * window))))
+    if len(signal) < 10:
+        return signal
+    window_array = np.ones(window) / window
+    return np.convolve(signal, window_array, mode="valid")
+
+
 def render(
     env: frozen_lake.wrappers.FrozenLakeWrapper,
     title="Environment",

@@ -128,8 +128,8 @@ class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
         return torch.as_tensor(one_hot_map, dtype=torch.get_default_dtype())
 
     def observation_inv(self, obs: torch.Tensor) -> int:
-        agent_idx = torch.argmax(obs[0]) if self.one_hot else np.argmin(obs[0])
-        y, x = np.unravel_index(agent_idx, obs.shape[1:])
+        agent_idx = torch.argmax(obs[0]) if self.one_hot else torch.argmin(obs[0])
+        y, x = divmod(agent_idx.item(), obs.shape[1])
         return int(y) * self.unwrapped.ncol + int(x)
 
 

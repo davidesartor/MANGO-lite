@@ -63,4 +63,5 @@ class DQNetTrainer(Trainer):
             qval_next = self.target_net(transitions.next_obs)
             best_qval_next = torch.gather(qval_next, 1, best_next_action)
             best_qval_next[transitions.terminated] = 0.0
-        return qval_sampled_action - transitions.reward.unsqueeze(1) - self.gamma * best_qval_next
+        td = qval_sampled_action - transitions.reward.unsqueeze(1) - self.gamma * best_qval_next
+        return td.squeeze(1)
