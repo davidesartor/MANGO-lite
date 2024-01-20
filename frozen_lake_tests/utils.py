@@ -10,7 +10,7 @@ def smooth(signal, window=0.01):
     if len(signal) < 10:
         return signal
     window_array = np.ones(window) / window
-    return np.convolve(signal, window_array, mode="valid")
+    return np.convolve(signal, window_array, mode="full")[: -window + 1]
 
 
 def render(

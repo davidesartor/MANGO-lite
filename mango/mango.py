@@ -41,15 +41,14 @@ class MangoLayer(MangoEnv):
     def action_space(self) -> spaces.Discrete:
         return spaces.Discrete(len(self.abstract_actions))
 
-    def step(self, comand: ActType, randomness=0.0) -> Transition:
+    def step(self, comand: ActType, randomness=0.0, max_loops=1) -> Transition:
         steps: list[Transition] = []
         while True:
             obs_masked = self.abstract_actions[comand].mask(self.environment.obs)
             action = self.policies[comand].get_action(obs_masked, randomness)
             steps.append(self.environment.step(action))
 
-            # truncate episode when looping more than once
-            if sum([(steps[-1].next_obs == step.start_obs).all() for step in steps]) > 1:
+            if sum([(steps[-1].next_obs == step.start_obs).all() for step in steps]) > max_loops:
                 steps[-1] = steps[-1]._replace(truncated=True)
 
             if steps[-1].terminated or steps[-1].truncated:
@@ -69,7 +68,7 @@ class Agent:
         self.environment = environment
         self.policy = policy
 
-    def run_episode(self, randomness: float = 0.0) -> Transition:
+    def run_episode(self, randomness: float = 0.0, max_loops=1) -> Transition:
         self.environment.reset()
 
         steps: list[Transition] = []
@@ -77,8 +76,8 @@ class Agent:
             action = self.policy.get_action(self.environment.obs, randomness)
             steps.append(self.environment.step(action, randomness))
 
-            # truncate episode when looping more than once
-            if sum([(steps[-1].next_obs == step.start_obs).all() for step in steps]) > 1:
+            # early stop in loops
+            if sum([(steps[-1].next_obs == step.start_obs).all() for step in steps]) > max_loops:
                 steps[-1] = steps[-1]._replace(truncated=True)
 
             if steps[-1].terminated or steps[-1].truncated:

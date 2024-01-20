@@ -15,8 +15,7 @@ class DQNetPolicy(Policy):
         with torch.no_grad():
             if randomness >= 1.0 - 1e-08:
                 return int(torch.randint(0, int(self.action_space.n), ()))
-
-            qvals: torch.Tensor = self.net(obs.unsqueeze(0)).squeeze(0)
+            qvals = self.net(obs.unsqueeze(0)).squeeze(0)
             if randomness <= 0.0 + 1e-08:
                 return int(qvals.argmax())
 
@@ -26,7 +25,7 @@ class DQNetPolicy(Policy):
 
 
 class DQNetTrainer(Trainer):
-    def __init__(self, net: torch.nn.Module, lr=1e-3, gamma=0.95, tau=0.001):
+    def __init__(self, net: torch.nn.Module, gamma=0.95, lr=1e-3, tau=0.01):
         self.lr = lr
         self.gamma = gamma
         self.tau = tau
@@ -35,7 +34,7 @@ class DQNetTrainer(Trainer):
     def lazy_init(self):
         # need separate call when working with lazy modules
         self.target_net = copy.deepcopy(self.net).train()
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr, betas=(0.9, 0.95))
 
     def train(self, transitions: StackedTransitions) -> TrainInfo:
         if len(transitions) == 0:

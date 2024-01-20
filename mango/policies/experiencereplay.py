@@ -2,20 +2,17 @@ import torch
 from mango.protocols import Transition, StackedTransitions
 
 
-class CircularBuffer:
+class Buffer:
     def __init__(self, capacity: int):
         self.capacity = capacity
         self.last_in = -1
         self.size = 0
 
-    def push(self, item: torch.Tensor) -> int:
+    def push(self, idx: int, item: torch.Tensor):
         if not hasattr(self, "memory"):
             self.memory = torch.empty((self.capacity, *item.shape), dtype=item.dtype)
-
-        self.last_in = (self.last_in + 1) % len(self.memory)
         self.size = min(self.size + 1, len(self.memory))
-        self.memory[self.last_in] = item
-        return self.last_in
+        self.memory[idx] = item
 
     def __getitem__(self, idx: torch.Tensor) -> torch.Tensor:
         return self.memory[idx]
@@ -29,7 +26,7 @@ class ExperienceReplay:
         self.reset()
 
     def reset(self) -> None:
-        self.memory = [CircularBuffer(self.capacity) for _ in "sasrtt"]
+        self.memory = [Buffer(self.capacity) for _ in "sasrtt"]
         self.priorities = torch.zeros(self.capacity, dtype=torch.float32)
 
     def can_sample(self) -> bool:
@@ -41,9 +38,10 @@ class ExperienceReplay:
         self.priorities[self.last_sampled] = prio
 
     def push(self, transition: Transition) -> None:
-        idxs = [mem.push(torch.as_tensor(elem)) for mem, elem in zip(self.memory, transition)]
-        assert all(idx == idxs[0] for idx in idxs)
-        self.priorities[idxs[0]] = self.priorities.max().clip(1.0)
+        idx = int(self.priorities.argmin())
+        for mem, elem in zip(self.memory, transition):
+            mem.push(idx, torch.as_tensor(elem))
+        self.priorities[idx] = 1e8
 
     def extend(self, transitions: list[Transition]) -> None:
         for transition in transitions:
