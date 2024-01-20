@@ -14,19 +14,19 @@ class DQNetPolicy(Policy):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         with torch.no_grad():
             if randomness >= 1.0 - 1e-08:
-                return int(torch.randint(0, int(self.action_space.n), ()))
+                return torch.randint(0, int(self.action_space.n), ())
 
             qvals: torch.Tensor = self.net(obs.unsqueeze(0)).squeeze(0)
             if randomness <= 0.0 + 1e-08:
-                return int(qvals.argmax())
+                return qvals.argmax()
 
             temperture = -np.log2(1 - randomness) / 2
             probs = torch.softmax(qvals / temperture, dim=-1)
-            return int(torch.multinomial(probs, 1))
+            return torch.multinomial(probs, 1)[0]
 
 
 class DQNetTrainer(Trainer):
-    def __init__(self, net: torch.nn.Module, lr=1e-3, gamma=0.95, tau=0.005):
+    def __init__(self, net: torch.nn.Module, lr=1e-3, gamma=0.95, tau=0.001):
         self.lr = lr
         self.gamma = gamma
         self.tau = tau

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Protocol, NamedTuple, Any, Sequence
+from typing import Protocol, NamedTuple, Any, Sequence, SupportsFloat
 from itertools import chain
 import torch
 from . import spaces
@@ -8,12 +8,12 @@ from . import spaces
 # this is not a good way to type this version
 # but it will minimize changes when addin support for generic types
 ObsType = torch.Tensor
-ActType = int
+ActType = torch.Tensor
 
 
 class Transition(NamedTuple):
     start_obs: ObsType
-    action: ActType
+    action: ActType | None
     next_obs: ObsType
     reward: float
     terminated: bool
@@ -29,7 +29,7 @@ class Transition(NamedTuple):
         )
 
     @classmethod
-    def from_steps(cls, comand: ActType, steps: Sequence[Transition]) -> Transition:
+    def from_steps(cls, comand: ActType | None, steps: Sequence[Transition]) -> Transition:
         return Transition(
             start_obs=steps[0].start_obs,
             action=comand,
@@ -81,14 +81,10 @@ class Environment(Protocol):
     def action_space(self) -> spaces.Discrete:
         ...
 
-    @property
-    def observation_space(self) -> spaces.Space:
-        ...
-
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[Any, dict[str, Any]]:
         ...
 
-    def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         ...

@@ -18,7 +18,7 @@ class MangoEnv:
 
     def step(self, comand: ActType, randomness=0.0) -> Transition:
         start_obs = self.obs
-        self.obs, reward, term, trunc, info = self.environment.step(comand)
+        self.obs, reward, term, trunc, info = self.environment.step(int(comand))
         return Transition(start_obs, comand, self.obs, reward, term, trunc)
 
     def reset(
@@ -87,4 +87,4 @@ class Agent:
 
             if steps[-1].terminated or steps[-1].truncated:
                 break
-        return Transition.from_steps(0, steps)
+        return Transition.from_steps(None, steps)
