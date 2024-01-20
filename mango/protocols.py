@@ -49,6 +49,9 @@ class StackedTransitions(NamedTuple):
     terminated: torch.Tensor
     truncated: torch.Tensor
 
+    def to(self, device: str, non_blocking=False) -> StackedTransitions:
+        return StackedTransitions(*(el.to(device, non_blocking=non_blocking) for el in self))
+
 
 class TrainInfo(NamedTuple):
     loss: torch.Tensor

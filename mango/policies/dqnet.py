@@ -32,42 +32,44 @@ class DQNetTrainer(Trainer):
         self.tau = tau
         self.net = net
 
-    def optimizer_init(self, train_device=None):
-        # needs to be called lazily to allow deepcopy with lazy modules
-        self.train_net = copy.deepcopy(self.net).to(train_device, non_blocking=True).train()
-        self.optimizer = torch.optim.RAdam(self.train_net.parameters(recurse=True), lr=self.lr)
-        self.target_net = copy.deepcopy(self.train_net).train()
+    def lazy_init(self):
+        # need separate call when working with lazy modules
+        self.target_net = copy.deepcopy(self.net).train()
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
 
     def train(self, transitions: StackedTransitions) -> TrainInfo:
         if len(transitions) == 0:
             raise ValueError(f"{self.__class__.__name__}.train received empty transitions list")
         if not hasattr(self, "optimizer"):
-            self.optimizer_init(train_device=transitions[0].device)
+            self.lazy_init()
 
+        self.net.train()
         td = self.temporal_difference(transitions)
         loss = torch.nn.functional.smooth_l1_loss(td, torch.zeros_like(td))
-        self.optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        td = td.detach().to("cpu", non_blocking=True)
+        self.optimization_step(loss)
+
         loss = loss.detach().to("cpu", non_blocking=True)
-        self.optimizer.step()
-        self.copy_from_to(self.train_net, self.target_net, tau=self.tau)
-        self.copy_from_to(self.target_net, self.net)
+        td = td.detach().to("cpu", non_blocking=True)
         self.net.eval()
         return TrainInfo(loss=loss, td=td)
 
-    @staticmethod
-    def copy_from_to(source: torch.nn.Module, target: torch.nn.Module, tau: float = 1.0) -> None:
-        for tp, sp in zip(target.parameters(recurse=True), source.parameters(recurse=True)):
-            tp.data.copy_(tau * sp.data.to(tp.data.device, non_blocking=True) + (1 - tau) * tp.data)
+    def optimization_step(self, loss: torch.Tensor):
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        self.optimizer.step()
+
+        # soft update of target network
+        for target_param, param in zip(self.target_net.parameters(), self.net.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
     def temporal_difference(self, transitions: StackedTransitions) -> torch.Tensor:
         start_obs, action, next_obs, reward, terminated, truncated = transitions
+
         # double DQN - use qnet to select best action, use target_net to evaluate it
-        qval_start = self.train_net(start_obs)
+        qval_start = self.net(start_obs)
         qval_sampled_action = torch.gather(qval_start, 1, action.unsqueeze(1))
         with torch.no_grad():
-            best_next_action = self.train_net(next_obs).argmax(dim=1, keepdim=True)
+            best_next_action = self.net(next_obs).argmax(dim=1, keepdim=True)
             qval_next = self.target_net(next_obs)
             best_qval_next = torch.gather(qval_next, 1, best_next_action)
             best_qval_next[terminated] = 0.0
