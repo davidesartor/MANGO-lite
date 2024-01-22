@@ -1,8 +1,86 @@
+from dataclasses import dataclass
 from functools import partial
 from typing import NamedTuple, Optional
+import spaces
 
 import jax
 import jax.numpy as jnp
+from flax import struct
+
+
+@struct.dataclass
+class EnvParams:
+    frozen: jax.Array
+    agent_start: jax.Array
+    goal_start: jax.Array
+
+
+@struct.dataclass
+class EnvState:
+    agent_pos: jax.Array
+    goal_pos: jax.Array
+
+
+EnvObs = jax.Array
+
+
+@dataclass(eq=False, frozen=True)
+class FrozenLake:
+    shape: tuple[int, int]
+    frozen_prob: Optional[float] = None
+    frozen_prob_high: Optional[float] = None
+
+    action_space: spaces.Space = spaces.Discrete(4)
+
+    def init(self, rng_key: jax.Array) -> EnvParams:
+        if self.frozen_prob is None:
+            frozen = get_preset_map(self.shape)
+            agent_start = jnp.array([[0, 0]])
+            goal_start = jnp.array([[s - 1 for s in self.shape]])
+        else:
+            key, key_p, key_gen = jax.random.split(rng_key, 3)
+            p_high = self.frozen_prob_high or self.frozen_prob
+            p = jax.random.uniform(key_p, minval=self.frozen_prob, maxval=p_high)
+            frozen = generate_frozen_chunk(key_gen, self.shape, p)
+            agent_start = jnp.indices(self.shape)[:, frozen].T
+            goal_start = jnp.indices(self.shape)[:, frozen].T
+        return EnvParams(frozen, agent_start, goal_start)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, rng_key: jax.Array, env_params: EnvParams) -> tuple[EnvObs, EnvState]:
+        rng_key, key_agent, key_goal = jax.random.split(rng_key, 3)
+        agent_pos = jax.random.choice(key_agent, env_params.agent_start)
+        goal_pos = jax.random.choice(key_goal, env_params.goal_start)
+        state = EnvState(agent_pos, goal_pos)
+        return self.obs(state, env_params), state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(
+        self, rng_key: jax.Array, state: EnvState, action: jax.Array, env_params: EnvParams
+    ) -> tuple[EnvObs, EnvState, float, bool, dict]:
+        LEFT, DOWN, RIGHT, UP = jnp.array(0), jnp.array(1), jnp.array(2), jnp.array(3)
+        delta = jnp.select(
+            [action == LEFT, action == DOWN, action == RIGHT, action == UP],
+            [jnp.array([0, -1]), jnp.array([1, 0]), jnp.array([0, 1]), jnp.array([-1, 0])],
+        )
+        new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(env_params.frozen.shape) - 1)
+        state = EnvState(agent_pos=new_agent_pos, goal_pos=state.goal_pos)
+
+        reward, done = jax.lax.cond(
+            (state.agent_pos == state.goal_pos).all(),
+            lambda: (1.0, True),
+            lambda: (0.0, ~env_params.frozen[tuple(state.agent_pos)]),
+        )
+
+        return self.obs(state, env_params), state, reward, done, {}
+
+    def obs(self, state: EnvState, env_params: EnvParams) -> EnvObs:
+        # one-hot encoding of the observation
+        obs = jnp.zeros((3, *env_params.frozen.shape))
+        obs = obs.at[0, state.agent_pos[0], state.agent_pos[1]].set(1)
+        obs = obs.at[1, state.goal_pos[0], state.goal_pos[1]].set(1)
+        obs = obs.at[2].set(env_params.frozen)
+        return jax.lax.stop_gradient(obs)
 
 
 @jax.jit
@@ -10,37 +88,31 @@ def connected_components(frozen: jax.Array) -> jax.Array:
     """get a boolean mask (1=frozen, 0=lake) and return a tensor of the same shape
     with the indices of the connected component each cell belongs to (0 if it is a lake)"""
 
-    class Components(NamedTuple):
-        last: jax.Array
-        prev: jax.Array
+    def while_cond(prev_and_curr_components):
+        previous, current = prev_and_curr_components
+        return (previous != current).any()
 
-    def spread(components: Components) -> Components:
-        directional_spreads = [
-            jnp.pad(components.last, ((1, 1), (1, 1))),
-            jnp.pad(components.last, ((0, 2), (1, 1))),
-            jnp.pad(components.last, ((2, 0), (1, 1))),
-            jnp.pad(components.last, ((1, 1), (0, 2))),
-            jnp.pad(components.last, ((1, 1), (2, 0))),
-        ]
-        spread = jnp.stack(directional_spreads).max(axis=0)[1:-1, 1:-1]
+    def while_body(prev_and_curr_components):
+        previous, current = prev_and_curr_components
+        spread = current
+        spread = spread.at[1:, :].set(jnp.maximum(spread[1:, :], current[:-1, :]))
+        spread = spread.at[:-1, :].set(jnp.maximum(spread[:-1, :], current[1:, :]))
+        spread = spread.at[:, 1:].set(jnp.maximum(spread[:, 1:], current[:, :-1]))
+        spread = spread.at[:, :-1].set(jnp.maximum(spread[:, :-1], current[:, 1:]))
         spread = spread * frozen
-        return Components(last=spread, prev=components.last)
+        return current, spread
 
     # expand untill each connected component has an unique id
-    components = jax.lax.while_loop(
-        cond_fun=lambda components: (components.prev != components.last).any(),
-        body_fun=lambda components: spread(components),
-        init_val=Components(
-            last=jnp.arange(1, frozen.size + 1).reshape(frozen.shape),
-            prev=frozen.astype(jnp.int32),
-        ),
+    components = jnp.arange(1, frozen.size + 1).reshape(frozen.shape)
+    _, components = jax.lax.while_loop(
+        cond_fun=while_cond, body_fun=while_body, init_val=(frozen.astype(jnp.int32), components)
     )
 
     # shift the component ids to be contiguous (1, 2, 3, ..., n)
     components = jax.lax.while_loop(
         cond_fun=lambda x: x.min() < 0,
         body_fun=lambda x: jnp.where(x == x.min(), x.max() + 1, x),
-        init_val=-components.last,
+        init_val=-components,
     )
     return components
 
@@ -71,102 +143,28 @@ def generate_frozen_chunk(rng_key, shape, p):
     return map
 
 
-def get_preset_map(rows: int, cols: int) -> jax.Array:
+@partial(jax.jit, static_argnames=("shape"))
+def get_preset_map(shape) -> jax.Array:
+    rows, cols = shape
     if rows == cols == 4:
-        return 1 - jnp.array(
-            [
-                [0.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 1.0],
-                [0.0, 0.0, 0.0, 1.0],
-                [1.0, 0.0, 0.0, 0.0],
-            ]
-        )
+        map = [
+            "FFFF",
+            "FHFH",
+            "FFFH",
+            "HFFF",
+        ]
+
     elif rows == cols == 8:
-        return 1 - jnp.array(
-            [
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-            ]
-        )
+        map = [
+            "FFFFFFFF",
+            "FFFFFFFF",
+            "FFFHFFFF",
+            "FFFFFHFF",
+            "FFFHFFFF",
+            "FHHFFFHF",
+            "FHFFHFHF",
+            "FFFHFFFF",
+        ]
     else:
         raise ValueError(f"no preset map for {rows}x{cols}")
-
-
-class FrozenLake:
-    def __init__(
-        self,
-        shape: tuple[int, int],
-        frozen_prob: Optional[float] = None,
-        rng_key: Optional[jax.Array] = None,
-    ):
-        if rng_key is None:
-            self.frozen = get_preset_map(*shape)
-            self.agent_start = jnp.array([[0, 0]])
-            self.goal_start = jnp.array([[-1, -1]])
-            self.rng_key = jax.random.PRNGKey(0)
-        else:
-            self.rng_key, subkey1, subkey2 = jax.random.split(rng_key, 3)
-            if frozen_prob is None:
-                p = jax.random.uniform(subkey1, minval=0.5, maxval=0.8)
-            else:
-                p = jnp.array(frozen_prob)
-            self.frozen = generate_frozen_chunk(subkey2, shape, p)
-            self.agent_start = jnp.indices(shape)[:, self.frozen == 1].T
-            self.goal_start = jnp.indices(shape)[:, self.frozen == 1].T
-
-    def step(self, action: jax.Array):
-        assert action in [0, 1, 2, 3]
-        LEFT, DOWN, RIGHT, UP = 0, 1, 2, 3
-        delta = jnp.select(
-            [action == LEFT, action == DOWN, action == RIGHT, action == UP],
-            [jnp.array([0, -1]), jnp.array([1, 0]), jnp.array([0, 1]), jnp.array([-1, 0])],
-        )
-        new_pos = jnp.clip(self.agent_pos + delta, 0, jnp.array(self.frozen.shape))
-        print(new_pos)
-        self.agent_pos = new_pos
-
-    def reset(self):
-        self.rng_key, subkey1, subkey2 = jax.random.split(self.rng_key, 3)
-        self.agent_pos = jax.random.choice(subkey1, self.agent_start)
-        self.goal_pos = jax.random.choice(subkey2, self.goal_start)
-        return self.agent_pos, {}
-
-    def play(self):
-        self.reset()
-        self.render()
-        while True:
-            action = jnp.array({"w": 0, "a": 1, "s": 2, "d": 3}.get(input()))
-            if action is None:
-                break
-            self.step(action)
-            self.render()
-
-    def render(self):
-        import matplotlib.pyplot as plt
-
-        rows, cols = self.frozen.shape
-        plt.figure(figsize=(cols, rows), dpi=60)
-        plt.xticks([])
-        plt.yticks([])
-        # plt the map
-        plt.imshow(1 - self.frozen, cmap="Blues", vmin=-0.1, vmax=3)
-        # plt the frozen
-        y, x = jnp.where(self.frozen == 0)
-        plt.scatter(x, y, marker="o", s=3000, c="snow", edgecolors="white")
-        # plt the holes
-        y, x = jnp.where(self.frozen == 0)
-        plt.scatter(x, y, marker="o", s=3000, c="tab:blue", edgecolors="white")
-        # plt the goal
-        y, x = self.goal_pos
-        plt.scatter(x, y, marker="*", s=800, c="orange", edgecolors="black")
-        # plt the agent
-        y, x = self.agent_pos
-        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="black")
-        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="black")
-        plt.show()
+    return jnp.array([[c == "F" for c in row] for row in map])
