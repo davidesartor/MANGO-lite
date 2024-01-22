@@ -1,5 +1,19 @@
+from __future__ import annotations
 import torch
-from mango.protocols import Transition, StackedTransitions
+from mango.protocols import Transition
+from typing import NamedTuple
+
+
+class StackedTransitions(NamedTuple):
+    start_obs: torch.Tensor
+    action: torch.Tensor
+    next_obs: torch.Tensor
+    reward: torch.Tensor
+    terminated: torch.Tensor
+    truncated: torch.Tensor
+
+    def to(self, device: str, non_blocking=False) -> StackedTransitions:
+        return StackedTransitions(*(el.to(device, non_blocking=non_blocking) for el in self))
 
 
 class Buffer:

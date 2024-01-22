@@ -3,7 +3,8 @@ import numpy as np
 import torch
 
 from mango import spaces
-from mango.protocols import ActType, ObsType, Policy, StackedTransitions, Trainer, TrainInfo
+from mango.policies.experiencereplay import ExperienceReplay, StackedTransitions
+from mango.protocols import ActType, ObsType, Policy
 
 
 class DQNetPolicy(Policy):
@@ -24,7 +25,7 @@ class DQNetPolicy(Policy):
             return int(torch.multinomial(probs, 1).item())
 
 
-class DQNetTrainer(Trainer):
+class DQNetTrainer:
     def __init__(self, net: torch.nn.Module, gamma=0.95, lr=1e-3, tau=0.01):
         self.lr = lr
         self.gamma = gamma
@@ -36,21 +37,21 @@ class DQNetTrainer(Trainer):
         self.target_net = copy.deepcopy(self.net).train()
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr, betas=(0.9, 0.95))
 
-    def train(self, transitions: StackedTransitions) -> TrainInfo:
-        if len(transitions) == 0:
-            raise ValueError(f"{self.__class__.__name__}.train received empty transitions list")
+    def train(self, replay_buffer: ExperienceReplay, steps: int = 1) -> float:
+        self.net.train()
         if not hasattr(self, "optimizer"):
             self.lazy_init()
 
-        self.net.train()
-        td = self.temporal_difference(transitions)
-        loss = torch.nn.functional.smooth_l1_loss(td, torch.zeros_like(td))
-        self.optimization_step(loss)
-
-        loss = loss.detach().to("cpu", non_blocking=True)
-        td = td.detach().to("cpu", non_blocking=True)
+        avg_loss = torch.zeros(())
+        for _ in range(steps):
+            transitions = replay_buffer.sample()
+            td = self.temporal_difference(transitions)
+            loss = torch.nn.functional.smooth_l1_loss(td, torch.zeros_like(td))
+            self.optimization_step(loss)
+            replay_buffer.update_priorities_last_sampled(td)
+            avg_loss += loss
         self.net.eval()
-        return TrainInfo(loss=loss, td=td)
+        return avg_loss.item() / steps
 
     def optimization_step(self, loss: torch.Tensor):
         self.optimizer.zero_grad(set_to_none=True)

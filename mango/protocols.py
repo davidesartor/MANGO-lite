@@ -41,28 +41,6 @@ class Transition(NamedTuple):
         )
 
 
-class StackedTransitions(NamedTuple):
-    start_obs: torch.Tensor
-    action: torch.Tensor
-    next_obs: torch.Tensor
-    reward: torch.Tensor
-    terminated: torch.Tensor
-    truncated: torch.Tensor
-
-    def to(self, device: str, non_blocking=False) -> StackedTransitions:
-        return StackedTransitions(*(el.to(device, non_blocking=non_blocking) for el in self))
-
-
-class TrainInfo(NamedTuple):
-    loss: torch.Tensor
-    td: torch.Tensor
-
-
-class Trainer(Protocol):
-    def train(self, transitions: StackedTransitions) -> TrainInfo:
-        ...
-
-
 class Policy(Protocol):
     def get_action(self, obs: ObsType, randomness: float = 0.0) -> ActType:
         ...
