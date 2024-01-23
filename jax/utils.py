@@ -1,11 +1,9 @@
 from __future__ import annotations
-from functools import partial
-from typing import Any, Callable, Optional
 import jax
 import jax.numpy as jnp
 from flax import struct
 
-from policies import DQNet, PolicyParams
+from policies import DQNPolicy, PolicyParams
 from frozen_lake import EnvState, EnvParams, FrozenLake, ObsType, ActType, RNGKey
 
 
@@ -20,7 +18,7 @@ class Transition(struct.PyTreeNode):
 
 def rollout(
     env: FrozenLake,
-    policy: DQNet,
+    policy: DQNPolicy,
     rng_key: RNGKey,
     policy_params: PolicyParams,
     steps: int,
@@ -54,5 +52,5 @@ def loss_fn(policy, policy_params, transitions, discount=0.95):
     qvals: jax.Array = jax.vmap(qval)(transitions)  # type: ignore
     qselected = jnp.take_along_axis(qvals[:-1], transitions.action[:-1, None], axis=-1).squeeze(-1)
     qnext = jnp.max(qvals[1:], axis=-1)
-    td = qselected + transitions.reward[:-1] - discount * qnext
+    td = qselected + transitions.reward[:-1] - discount * qnext * (1 - transitions.done[:-1])
     return jnp.mean(td**2)

@@ -82,7 +82,7 @@ class FrozenLake:
         obs = jnp.zeros((*params.frozen.shape, 3))
         obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)
         obs = obs.at[state.goal_pos[0], state.goal_pos[1], 1].set(1)
-        obs = obs.at[:, :, 2].set(params.frozen)
+        obs = obs.at[:, :, 2].set(~params.frozen)
         return jax.lax.stop_gradient(obs)
 
 
