@@ -77,7 +77,7 @@ class FrozenLake:
         return state, reward, done, {}
 
     @partial(jax.jit, static_argnums=0)
-    def obs(self, rng_key: RNGKey, state: EnvState, params: EnvParams) -> ObsType:
+    def get_obs(self, rng_key: RNGKey, state: EnvState, params: EnvParams) -> ObsType:
         # one-hot encoding of the observation
         obs = jnp.zeros((*params.frozen.shape, 3))
         obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)
