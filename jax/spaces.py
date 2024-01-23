@@ -19,7 +19,7 @@ class Space(Protocol):
 class Discrete(Space):
     n: int
     shape: tuple[int, ...] = ()
-    dtype: jnp.dtype = jnp.int_
+    dtype: jnp.dtype = jnp.int32
 
     def sample(self, rng: jax.Array) -> jax.Array:
         return jax.random.randint(rng, shape=(), minval=0, maxval=self.n)

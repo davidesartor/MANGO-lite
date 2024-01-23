@@ -1,6 +1,5 @@
-from dataclasses import dataclass
 from functools import partial
-from typing import NamedTuple, Optional
+from typing import ClassVar, Optional
 import spaces
 
 import jax
@@ -8,78 +7,82 @@ import jax.numpy as jnp
 from flax import struct
 
 
-@struct.dataclass
-class EnvParams:
+class EnvParams(struct.PyTreeNode):
     frozen: jax.Array
     agent_start: jax.Array
     goal_start: jax.Array
 
 
-@struct.dataclass
-class EnvState:
+class EnvState(struct.PyTreeNode):
     agent_pos: jax.Array
     goal_pos: jax.Array
 
 
-EnvObs = jax.Array
+RNGKey = jax.Array
+ObsType = jax.Array
+ActType = jax.Array
 
 
-@dataclass(eq=False, frozen=True)
 class FrozenLake:
-    shape: tuple[int, int]
-    frozen_prob: Optional[float] = None
-    frozen_prob_high: Optional[float] = None
+    action_space: ClassVar[spaces.Space] = spaces.Discrete(4)
 
-    action_space: spaces.Space = spaces.Discrete(4)
+    def __init__(
+        self,
+        shape: tuple[int, int],
+        frozen_prob: Optional[float] = None,
+        frozen_prob_high: Optional[float] = None,
+    ):
+        self.shape = shape
+        self.frozen_prob = frozen_prob
+        self.frozen_prob_high = frozen_prob_high
 
-    def init(self, rng_key: jax.Array) -> EnvParams:
+    def init(self, rng_key: RNGKey) -> EnvParams:
         if self.frozen_prob is None:
             frozen = get_preset_map(self.shape)
             agent_start = jnp.array([[0, 0]])
             goal_start = jnp.array([[s - 1 for s in self.shape]])
         else:
-            key, key_p, key_gen = jax.random.split(rng_key, 3)
+            key, rng_p, rng_gen = jax.random.split(rng_key, 3)
             p_high = self.frozen_prob_high or self.frozen_prob
-            p = jax.random.uniform(key_p, minval=self.frozen_prob, maxval=p_high)
-            frozen = generate_frozen_chunk(key_gen, self.shape, p)
+            p = jax.random.uniform(rng_p, minval=self.frozen_prob, maxval=p_high)
+            frozen = generate_frozen_chunk(rng_gen, self.shape, p)
             agent_start = jnp.indices(self.shape)[:, frozen].T
             goal_start = jnp.indices(self.shape)[:, frozen].T
         return EnvParams(frozen, agent_start, goal_start)
 
-    @partial(jax.jit, static_argnums=(0,))
-    def reset(self, rng_key: jax.Array, env_params: EnvParams) -> tuple[EnvObs, EnvState]:
-        rng_key, key_agent, key_goal = jax.random.split(rng_key, 3)
-        agent_pos = jax.random.choice(key_agent, env_params.agent_start)
-        goal_pos = jax.random.choice(key_goal, env_params.goal_start)
-        state = EnvState(agent_pos, goal_pos)
-        return self.obs(state, env_params), state
+    @partial(jax.jit, static_argnums=0)
+    def reset(self, rng_key: RNGKey, params: EnvParams) -> EnvState:
+        rng_key, rng_agent, rng_goal = jax.random.split(rng_key, 3)
+        agent_pos = jax.random.choice(rng_agent, params.agent_start)
+        goal_pos = jax.random.choice(rng_goal, params.goal_start)
+        return EnvState(agent_pos, goal_pos)
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, static_argnums=0)
     def step(
-        self, rng_key: jax.Array, state: EnvState, action: jax.Array, env_params: EnvParams
-    ) -> tuple[EnvObs, EnvState, float, bool, dict]:
+        self, rng_key: RNGKey, state: EnvState, action: ActType, params: EnvParams
+    ) -> tuple[EnvState, float, bool, dict]:
         LEFT, DOWN, RIGHT, UP = jnp.array(0), jnp.array(1), jnp.array(2), jnp.array(3)
         delta = jnp.select(
             [action == LEFT, action == DOWN, action == RIGHT, action == UP],
             [jnp.array([0, -1]), jnp.array([1, 0]), jnp.array([0, 1]), jnp.array([-1, 0])],
         )
-        new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(env_params.frozen.shape) - 1)
+        new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(params.frozen.shape) - 1)
         state = EnvState(agent_pos=new_agent_pos, goal_pos=state.goal_pos)
 
         reward, done = jax.lax.cond(
             (state.agent_pos == state.goal_pos).all(),
             lambda: (1.0, True),
-            lambda: (0.0, ~env_params.frozen[tuple(state.agent_pos)]),
+            lambda: (0.0, ~params.frozen[tuple(state.agent_pos)]),
         )
+        return state, reward, done, {}
 
-        return self.obs(state, env_params), state, reward, done, {}
-
-    def obs(self, state: EnvState, env_params: EnvParams) -> EnvObs:
+    @partial(jax.jit, static_argnums=0)
+    def obs(self, rng_key: RNGKey, state: EnvState, params: EnvParams) -> ObsType:
         # one-hot encoding of the observation
-        obs = jnp.zeros((3, *env_params.frozen.shape))
-        obs = obs.at[0, state.agent_pos[0], state.agent_pos[1]].set(1)
-        obs = obs.at[1, state.goal_pos[0], state.goal_pos[1]].set(1)
-        obs = obs.at[2].set(env_params.frozen)
+        obs = jnp.zeros((*params.frozen.shape, 3))
+        obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)
+        obs = obs.at[state.goal_pos[0], state.goal_pos[1], 1].set(1)
+        obs = obs.at[:, :, 2].set(params.frozen)
         return jax.lax.stop_gradient(obs)
 
 
@@ -118,7 +121,7 @@ def connected_components(frozen: jax.Array) -> jax.Array:
 
 
 @partial(jax.jit, static_argnames=("shape",))
-def generate_frozen_chunk(rng_key, shape, p):
+def generate_frozen_chunk(rng_key: RNGKey, shape: tuple[int, int], p: float) -> jax.Array:
     rows, cols = shape
     rng_key, sub_key = jax.random.split(rng_key)
     map = jax.random.uniform(sub_key, shape) < p
@@ -126,12 +129,12 @@ def generate_frozen_chunk(rng_key, shape, p):
     if rows == cols == 1:
         return map
 
-    def while_cond(iter_key_and_map):
-        iter, rng_key, map = iter_key_and_map
+    def while_cond(iter_rng_and_map):
+        iter, rng_key, map = iter_rng_and_map
         return connected_components(map).max() != 1
 
-    def while_body(iter_key_and_map):
-        iter, rng_key, map = iter_key_and_map
+    def while_body(iter_rng_and_map):
+        iter, rng_key, map = iter_rng_and_map
         rng_key, *sub_keys = jax.random.split(rng_key, 5)
         corners = [(0, 0), (0, cols // 2), (rows // 2, 0), (rows // 2, cols // 2)]
         for key, corner in zip(sub_keys, corners):
@@ -144,7 +147,7 @@ def generate_frozen_chunk(rng_key, shape, p):
 
 
 @partial(jax.jit, static_argnames=("shape"))
-def get_preset_map(shape) -> jax.Array:
+def get_preset_map(shape: tuple[int, int]) -> jax.Array:
     rows, cols = shape
     if rows == cols == 4:
         map = [
@@ -168,3 +171,42 @@ def get_preset_map(shape) -> jax.Array:
     else:
         raise ValueError(f"no preset map for {rows}x{cols}")
     return jnp.array([[c == "F" for c in row] for row in map])
+
+
+def render(state: EnvState, params: EnvParams):
+    from matplotlib import pyplot as plt
+
+    rows, cols = params.frozen.shape
+    plt.figure(figsize=(cols, rows), dpi=60)
+    plt.xticks([])
+    plt.yticks([])
+    # plt the map
+    plt.imshow(1 - params.frozen, cmap="Blues", vmin=-1, vmax=3)
+    # plt the frozen
+    y, x = jnp.where(params.frozen == 1)
+    plt.scatter(x, y, marker="o", s=2500, c="snow", edgecolors="k")
+    # plt the frozen
+    y, x = jnp.where(params.frozen == 0)
+    plt.scatter(x, y, marker="o", s=2500, c="tab:blue", edgecolors="w")
+
+    # plt the goal
+    y, x = state.goal_pos if state.goal_pos.ndim == 1 else state.goal_pos[-1]
+    plt.scatter(x, y, marker="*", s=800, c="orange", edgecolors="k")
+
+    # plt the agent
+    if state.agent_pos.ndim == 1:
+        y, x = state.agent_pos
+        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k")
+        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k")
+    else:
+        # if superposition, use fequency as alpha
+        frequency, _, _ = jnp.histogram2d(
+            state.agent_pos[:, 0],
+            state.agent_pos[:, 1],
+            bins=params.frozen.shape,
+            range=[[0, s] for s in params.frozen.shape],
+        )
+        alpha = 0.2 + 0.6 * frequency / frequency.max()
+        y, x = jnp.where(frequency > 0)
+        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k", alpha=alpha[y, x])  # type: ignore
+        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k", alpha=alpha[y, x])  # type: ignore

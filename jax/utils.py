@@ -1,40 +1,87 @@
-import matplotlib.pyplot as plt
+from __future__ import annotations
+from typing import Any, Callable, Optional
 import jax
 import jax.numpy as jnp
-from frozen_lake import EnvState, EnvParams
+from flax import struct
+
+from frozen_lake import EnvState, EnvParams, ObsType, ActType, RNGKey
+
+PolicyParams = Any
 
 
-def render(state: EnvState, env_params: EnvParams):
-    rows, cols = env_params.frozen.shape
-    plt.figure(figsize=(cols, rows), dpi=60)
-    plt.xticks([])
-    plt.yticks([])
-    # plt the map
-    plt.imshow(1 - env_params.frozen, cmap="Blues", vmin=-1, vmax=3)
-    # plt the frozen
-    y, x = jnp.where(env_params.frozen == 1)
-    plt.scatter(x, y, marker="o", s=2500, c="snow", edgecolors="k")
-    # plt the frozen
-    y, x = jnp.where(env_params.frozen == 0)
-    plt.scatter(x, y, marker="o", s=2500, c="tab:blue", edgecolors="w")
+class Transition(struct.PyTreeNode):
+    env_state: EnvState
+    obs: ObsType
+    action: ActType
+    reward: float
+    done: bool
+    info: dict
 
-    # plt the goal
-    y, x = state.goal_pos if state.goal_pos.ndim == 1 else state.goal_pos[-1]
-    plt.scatter(x, y, marker="*", s=800, c="orange", edgecolors="k")
 
-    # plt the agent
-    if state.agent_pos.ndim == 1:
-        y, x = state.agent_pos
-        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k")
-        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k")
-    else:
-        # if superposition, use fequency as alpha
-        frequency, _, _ = jnp.histogram2d(
-            state.agent_pos[:, 0],
-            state.agent_pos[:, 1],
-            bins=env_params.frozen.shape,
+class SimulationState(struct.PyTreeNode):
+    env_state: EnvState
+    env_params: EnvParams = struct.field(pytree_node=False)
+    policy_params: PolicyParams = struct.field(pytree_node=False)
+
+    env_reset_fn: Callable[
+        [RNGKey, EnvParams],
+        EnvState,
+    ] = struct.field(pytree_node=False)
+
+    env_obs_fn: Callable[
+        [RNGKey, EnvState, EnvParams],
+        ObsType,
+    ] = struct.field(pytree_node=False)
+
+    env_step_fn: Callable[
+        [RNGKey, EnvState, ActType, EnvParams],
+        tuple[EnvState, float, bool, dict],
+    ] = struct.field(pytree_node=False)
+
+    policy_action_fn: Callable[
+        [PolicyParams, RNGKey, ObsType],
+        ActType,
+    ] = struct.field(pytree_node=False)
+
+    def step(self: SimulationState, rng_key: RNGKey):
+        rng_key, rng_obs, rng_action, rng_step, rng_reset = jax.random.split(rng_key, 5)
+        obs = self.env_obs_fn(rng_obs, self.env_state, self.env_params)
+        action = self.policy_action_fn(self.policy_params, rng_action, obs)
+        env_state, reward, done, info = self.env_step_fn(
+            rng_step, self.env_state, action, self.env_params
         )
-        alpha = 0.2 + 0.6 * frequency / frequency.max()
-        y, x = jnp.where(frequency > 0)
-        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k", alpha=alpha[y, x])
-        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k", alpha=alpha[y, x])
+        transition = Transition(self.env_state, obs, action, reward, done, info)
+        env_state = jax.lax.cond(
+            done, lambda: self.env_reset_fn(rng_reset, self.env_params), lambda: env_state
+        )
+        return self.replace(env_state=env_state), transition
+
+    def rollout(self: SimulationState, rng_key, steps):
+        rng_steps = jax.random.split(rng_key, steps)
+        final_state, transitions = jax.lax.scan(SimulationState.step, self, rng_steps)
+        return final_state, transitions
+
+    @classmethod
+    def create(
+        cls,
+        rng_key,
+        env,
+        policy,
+        env_params: Optional[EnvParams] = None,
+        policy_params: Optional[PolicyParams] = None,
+    ):
+        rng_key, rng_env_init, rng_policy_init, rng_obs, rng_reset = jax.random.split(rng_key, 5)
+        env_params = env_params or env.init(rng_env_init)
+        env_state = env.reset(rng_reset, env_params)
+        policy_params = policy_params or policy.init(
+            rng_policy_init, rng_obs, env.obs(rng_obs, env_state, env_params)
+        )
+        return cls(
+            env_params=env_params,
+            policy_params=policy_params,
+            env_state=env_state,
+            env_reset_fn=env.reset,
+            env_obs_fn=env.obs,
+            env_step_fn=env.step,
+            policy_action_fn=policy.apply,
+        )
