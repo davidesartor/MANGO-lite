@@ -2,23 +2,24 @@ from typing import Callable
 from matplotlib import pyplot as plt
 import jax.numpy as jnp
 import jax
+from flax import linen as nn
+from flax.core.scope import VariableDict
 from frozen_lake import FrozenLake, EnvState, EnvParams, ObsType, ActType, RNGKey
-from policies import PolicyParams, NetParams
 
 
 def plot_qvals(
     env: FrozenLake,
     env_params: EnvParams,
-    net_params: NetParams,
-    get_qval_fn: Callable[[NetParams, ObsType], jax.Array],
+    policy: nn.Module,
+    policy_params: VariableDict,
 ):
     plt.figure(figsize=(4, 3))
     coords = zip(*jnp.indices(env_params.frozen.shape).reshape(2, -1))
-    env_state = env.reset(env_params, jax.random.PRNGKey(0))
+    env_state, obs = env.reset(env_params, jax.random.PRNGKey(0))
     env_states = [env_state.replace(agent_pos=(y, x)) for y, x in coords]
     all_obs = [env.get_obs(env_params, jax.random.PRNGKey(0), state) for state in env_states]
-    qvals = jnp.stack([get_qval_fn(net_params, obs) for obs in all_obs])
-    plt.imshow(qvals.max(axis=-1).reshape(env_params.frozen.shape), cmap="RdYlGn", vmin=0, vmax=1)
+    qvals = jnp.stack([policy.apply(policy_params, obs, method="get_qval") for obs in all_obs])
+    plt.imshow(qvals.max(axis=-1).reshape(env_params.frozen.shape), cmap="RdYlGn")
     plt.colorbar()
 
 

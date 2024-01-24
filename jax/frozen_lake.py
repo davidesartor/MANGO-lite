@@ -1,4 +1,4 @@
-from functools import partial
+from functools import partial, wraps
 from typing import ClassVar, Optional
 import spaces
 
@@ -36,6 +36,7 @@ class FrozenLake:
         self.frozen_prob = frozen_prob
         self.frozen_prob_high = frozen_prob_high
 
+    @partial(jax.jit, static_argnums=0)
     def init(self, rng_key: RNGKey) -> EnvParams:
         if self.frozen_prob is None:
             frozen = get_preset_map(self.shape)
@@ -51,16 +52,18 @@ class FrozenLake:
         return EnvParams(frozen, agent_start, goal_start)
 
     @partial(jax.jit, static_argnums=0)
-    def reset(self, params: EnvParams, rng_key: RNGKey) -> EnvState:
-        rng_key, rng_agent, rng_goal = jax.random.split(rng_key, 3)
+    def reset(self, params: EnvParams, rng_key: RNGKey) -> tuple[EnvState, ObsType]:
+        rng_key, rng_agent, rng_goal, rng_obs = jax.random.split(rng_key, 4)
         agent_pos = jax.random.choice(rng_agent, params.agent_start)
         goal_pos = jax.random.choice(rng_goal, params.goal_start)
-        return EnvState(agent_pos, goal_pos)
+        state = jax.lax.stop_gradient(EnvState(agent_pos, goal_pos))
+        obs = self.get_obs(params, rng_obs, state)
+        return state, obs
 
     @partial(jax.jit, static_argnums=0)
     def step(
         self, params: EnvParams, rng_key: RNGKey, state: EnvState, action: ActType
-    ) -> tuple[EnvState, float, bool, dict]:
+    ) -> tuple[EnvState, ObsType, float, bool, dict]:
         LEFT, DOWN, RIGHT, UP = jnp.array(0), jnp.array(1), jnp.array(2), jnp.array(3)
         delta = jnp.select(
             [action == LEFT, action == DOWN, action == RIGHT, action == UP],
@@ -68,13 +71,14 @@ class FrozenLake:
         )
         new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(params.frozen.shape) - 1)
         state = EnvState(agent_pos=new_agent_pos, goal_pos=state.goal_pos)
+        obs = self.get_obs(params, rng_key, state)
 
         reward, done = jax.lax.cond(
             (state.agent_pos == state.goal_pos).all(),
             lambda: (1.0, True),
             lambda: (0.0, ~params.frozen[tuple(state.agent_pos)]),
         )
-        return state, reward, done, {}
+        return state, obs, reward, done, {}
 
     @partial(jax.jit, static_argnums=0)
     def get_obs(self, params: EnvParams, rng_key: RNGKey, state: EnvState) -> ObsType:
