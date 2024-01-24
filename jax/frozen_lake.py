@@ -51,7 +51,7 @@ class FrozenLake:
         return EnvParams(frozen, agent_start, goal_start)
 
     @partial(jax.jit, static_argnums=0)
-    def reset(self, rng_key: RNGKey, params: EnvParams) -> EnvState:
+    def reset(self, params: EnvParams, rng_key: RNGKey) -> EnvState:
         rng_key, rng_agent, rng_goal = jax.random.split(rng_key, 3)
         agent_pos = jax.random.choice(rng_agent, params.agent_start)
         goal_pos = jax.random.choice(rng_goal, params.goal_start)
@@ -59,7 +59,7 @@ class FrozenLake:
 
     @partial(jax.jit, static_argnums=0)
     def step(
-        self, rng_key: RNGKey, state: EnvState, action: ActType, params: EnvParams
+        self, params: EnvParams, rng_key: RNGKey, state: EnvState, action: ActType
     ) -> tuple[EnvState, float, bool, dict]:
         LEFT, DOWN, RIGHT, UP = jnp.array(0), jnp.array(1), jnp.array(2), jnp.array(3)
         delta = jnp.select(
@@ -77,7 +77,7 @@ class FrozenLake:
         return state, reward, done, {}
 
     @partial(jax.jit, static_argnums=0)
-    def get_obs(self, rng_key: RNGKey, state: EnvState, params: EnvParams) -> ObsType:
+    def get_obs(self, params: EnvParams, rng_key: RNGKey, state: EnvState) -> ObsType:
         # one-hot encoding of the observation
         obs = jnp.zeros((*params.frozen.shape, 3))
         obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)
@@ -121,7 +121,7 @@ def connected_components(frozen: jax.Array) -> jax.Array:
 
 
 @partial(jax.jit, static_argnames=("shape",))
-def generate_frozen_chunk(rng_key: RNGKey, shape: tuple[int, int], p: float) -> jax.Array:
+def generate_frozen_chunk(rng_key: RNGKey, shape: tuple[int, int], p: jax.Array) -> jax.Array:
     rows, cols = shape
     rng_key, sub_key = jax.random.split(rng_key)
     map = jax.random.uniform(sub_key, shape) < p
@@ -149,14 +149,10 @@ def generate_frozen_chunk(rng_key: RNGKey, shape: tuple[int, int], p: float) -> 
 @partial(jax.jit, static_argnames=("shape"))
 def get_preset_map(shape: tuple[int, int]) -> jax.Array:
     rows, cols = shape
-    if rows == cols == 4:
-        map = [
-            "FFFF",
-            "FHFH",
-            "FFFH",
-            "HFFF",
-        ]
-
+    if rows == cols == 2:
+        map = ["FH", "FF"]
+    elif rows == cols == 4:
+        map = ["FFFF", "FHFH", "FFFH", "HFFF"]
     elif rows == cols == 8:
         map = [
             "FFFFFFFF",
@@ -171,42 +167,3 @@ def get_preset_map(shape: tuple[int, int]) -> jax.Array:
     else:
         raise ValueError(f"no preset map for {rows}x{cols}")
     return jnp.array([[c == "F" for c in row] for row in map])
-
-
-def render(state: EnvState, params: EnvParams):
-    from matplotlib import pyplot as plt
-
-    rows, cols = params.frozen.shape
-    plt.figure(figsize=(cols, rows), dpi=60)
-    plt.xticks([])
-    plt.yticks([])
-    # plt the map
-    plt.imshow(1 - params.frozen, cmap="Blues", vmin=-1, vmax=3)
-    # plt the frozen
-    y, x = jnp.where(params.frozen == 1)
-    plt.scatter(x, y, marker="o", s=2500, c="snow", edgecolors="k")
-    # plt the frozen
-    y, x = jnp.where(params.frozen == 0)
-    plt.scatter(x, y, marker="o", s=2500, c="tab:blue", edgecolors="w")
-
-    # plt the goal
-    y, x = state.goal_pos if state.goal_pos.ndim == 1 else state.goal_pos[-1]
-    plt.scatter(x, y, marker="*", s=800, c="orange", edgecolors="k")
-
-    # plt the agent
-    if state.agent_pos.ndim == 1:
-        y, x = state.agent_pos
-        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k")
-        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k")
-    else:
-        # if superposition, use fequency as alpha
-        frequency, _, _ = jnp.histogram2d(
-            state.agent_pos[:, 0],
-            state.agent_pos[:, 1],
-            bins=params.frozen.shape,
-            range=[[0, s] for s in params.frozen.shape],
-        )
-        alpha = 0.2 + 0.6 * frequency / frequency.max()
-        y, x = jnp.where(frequency > 0)
-        plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k", alpha=alpha[y, x])  # type: ignore
-        plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k", alpha=alpha[y, x])  # type: ignore
