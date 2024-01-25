@@ -3,23 +3,23 @@ from matplotlib import pyplot as plt
 import jax.numpy as jnp
 import jax
 from flax import linen as nn
-from flax.core.scope import VariableDict
+import optax
 from frozen_lake import FrozenLake, EnvState, EnvParams, ObsType, ActType, RNGKey
 
 
 def plot_qvals(
     env: FrozenLake,
     env_params: EnvParams,
-    policy: nn.Module,
-    policy_params: VariableDict,
+    qnet_apply_fn: Callable[[optax.Params, ObsType], jax.Array],
+    qnet_params: optax.Params,
 ):
     plt.figure(figsize=(4, 3))
     coords = zip(*jnp.indices(env_params.frozen.shape).reshape(2, -1))
     env_state, obs = env.reset(env_params, jax.random.PRNGKey(0))
     env_states = [env_state.replace(agent_pos=(y, x)) for y, x in coords]
     all_obs = [env.get_obs(env_params, jax.random.PRNGKey(0), state) for state in env_states]
-    qvals = jnp.stack([policy.apply(policy_params, obs, method="get_qval") for obs in all_obs])
-    plt.imshow(qvals.max(axis=-1).reshape(env_params.frozen.shape), cmap="RdYlGn")
+    qvals = jnp.stack([qnet_apply_fn(qnet_params, obs) for obs in all_obs])
+    plt.imshow(qvals.max(axis=-1).reshape(env_params.frozen.shape), cmap="RdYlGn", vmin=0, vmax=1)
     plt.colorbar()
 
 

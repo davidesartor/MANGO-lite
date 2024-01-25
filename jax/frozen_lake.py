@@ -43,7 +43,7 @@ class FrozenLake:
             agent_start = jnp.array([[0, 0]])
             goal_start = jnp.array([[s - 1 for s in self.shape]])
         else:
-            key, rng_p, rng_gen = jax.random.split(rng_key, 3)
+            rng_p, rng_gen = jax.random.split(rng_key)
             p_high = self.frozen_prob_high or self.frozen_prob
             p = jax.random.uniform(rng_p, minval=self.frozen_prob, maxval=p_high)
             frozen = generate_frozen_chunk(rng_gen, self.shape, p)
@@ -53,7 +53,7 @@ class FrozenLake:
 
     @partial(jax.jit, static_argnums=0)
     def reset(self, params: EnvParams, rng_key: RNGKey) -> tuple[EnvState, ObsType]:
-        rng_key, rng_agent, rng_goal, rng_obs = jax.random.split(rng_key, 4)
+        rng_agent, rng_goal, rng_obs = jax.random.split(rng_key, 3)
         agent_pos = jax.random.choice(rng_agent, params.agent_start)
         goal_pos = jax.random.choice(rng_goal, params.goal_start)
         state = jax.lax.stop_gradient(EnvState(agent_pos, goal_pos))
@@ -70,7 +70,7 @@ class FrozenLake:
             [jnp.array([0, -1]), jnp.array([1, 0]), jnp.array([0, 1]), jnp.array([-1, 0])],
         )
         new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(params.frozen.shape) - 1)
-        state = EnvState(agent_pos=new_agent_pos, goal_pos=state.goal_pos)
+        state = state.replace(agent_pos=new_agent_pos)
         obs = self.get_obs(params, rng_key, state)
 
         reward, done = jax.lax.cond(

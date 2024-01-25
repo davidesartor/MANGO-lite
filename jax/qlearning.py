@@ -4,7 +4,6 @@ import jax
 import jax.numpy as jnp
 
 from flax import struct
-from flax.core import FrozenDict
 from flax.training.train_state import TrainState
 import optax
 
@@ -12,19 +11,20 @@ import utils
 
 
 class DDQNTrainState(TrainState):
-    params_targ: FrozenDict[str, Any] = struct.field(pytree_node=True)
+    params_targ: optax.Params = struct.field(pytree_node=True)
     td_discount: float = struct.field(pytree_node=False, default=0.95)
     soft_update_rate: float = struct.field(pytree_node=False, default=0.001)
 
     @classmethod
-    def create(cls, *, params, tx=optax.adam(1e-3), **kwargs):
-        return super().create(params=params, params_targ=params, tx=tx, **kwargs)
+    def create(cls, *, params: optax.Params, tx=optax.adam(1e-3), **kwargs):
+        params_targ = jax.tree_util.tree_map(lambda x: x, params)
+        return super().create(params=params, params_targ=params_targ, tx=tx, **kwargs)
 
     @jax.jit
     def temporal_difference(
         self,
-        params: FrozenDict[str, Any],
-        params_targ: FrozenDict[str, Any],
+        params: optax.Params,
+        params_targ: optax.Params,
         transition: utils.Transition,
     ) -> jax.Array:
         qstart = self.apply_fn(params, transition.obs)
@@ -35,7 +35,7 @@ class DDQNTrainState(TrainState):
         return td
 
     @jax.jit
-    def td_gradient(self, transitions: utils.Transition) -> FrozenDict[str, Any]:
+    def td_gradient(self, transitions: utils.Transition) -> optax.Params:
         def td_loss_fn(params, params_targ, transition):
             rollout_td_fn = jax.vmap(self.temporal_difference, in_axes=(None, None, 0))
             td = rollout_td_fn(params, params_targ, transition)
@@ -44,7 +44,7 @@ class DDQNTrainState(TrainState):
         return jax.grad(td_loss_fn)(self.params, self.params_targ, transitions)
 
     @jax.jit
-    def update_nets(self, grads: FrozenDict[str, Any]) -> Self:
+    def apply_updates(self, grads: optax.Params) -> Self:
         def soft_update(params_targ, tau, params):
             return jax.tree_map(lambda pt, p: pt * (1 - tau) + p * tau, params_targ, params)
 
