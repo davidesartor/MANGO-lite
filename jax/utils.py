@@ -85,3 +85,18 @@ def get_rollout_fn(
         return transitions
 
     return wraps(rollout)(jax.jit(rollout, static_argnames=("n_steps",)))
+
+
+@struct.dataclass
+class ReplayBuffer:
+    memory_size: int
+    batch_size: int
+
+    def init(self, sample: Transition):
+        return sample
+
+    def push(self, state, transition: Transition):
+        return state
+
+    def sample(self, state):
+        return state

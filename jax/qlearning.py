@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 from typing_extensions import Self
 import jax
 import jax.numpy as jnp
@@ -13,12 +13,21 @@ import utils
 class DDQNTrainState(TrainState):
     params_targ: optax.Params = struct.field(pytree_node=True)
     td_discount: float = struct.field(pytree_node=False, default=0.95)
-    soft_update_rate: float = struct.field(pytree_node=False, default=0.001)
+    soft_update_rate: float = struct.field(pytree_node=False, default=0.005)
 
     @classmethod
-    def create(cls, *, params: optax.Params, tx=optax.adam(1e-3), **kwargs):
+    def create(
+        cls,
+        *,
+        apply_fn: Callable[[optax.Params, utils.ObsType], jax.Array],
+        params: optax.Params,
+        tx=optax.chain(optax.clip_by_global_norm(1.0), optax.adam(1e-3)),
+        **kwargs,
+    ):
         params_targ = jax.tree_util.tree_map(lambda x: x, params)
-        return super().create(params=params, params_targ=params_targ, tx=tx, **kwargs)
+        return super().create(
+            apply_fn=apply_fn, params=params, params_targ=params_targ, tx=tx, **kwargs
+        )
 
     @jax.jit
     def temporal_difference(
