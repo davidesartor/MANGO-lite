@@ -46,8 +46,8 @@ class DDQNTrainState(TrainState):
     @jax.jit
     def td_gradient(self, transitions: utils.Transition) -> optax.Params:
         def td_loss_fn(params, params_targ, transition):
-            rollout_td_fn = jax.vmap(self.temporal_difference, in_axes=(None, None, 0))
-            td = rollout_td_fn(params, params_targ, transition)
+            batched_td_fn = jax.vmap(self.temporal_difference, in_axes=(None, None, 0))
+            td = batched_td_fn(params, params_targ, transition)
             return optax.huber_loss(td).mean()
 
         return jax.grad(td_loss_fn)(self.params, self.params_targ, transitions)

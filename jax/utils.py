@@ -26,7 +26,6 @@ class ConvNet(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        a = self.param("a", nn.initializers.ones, (1, 1))
         for ch in self.hidden:
             x = nn.Conv(ch, (3, 3))(x)
             x = nn.celu(x)
@@ -87,16 +86,36 @@ def get_rollout_fn(
     return wraps(rollout)(jax.jit(rollout, static_argnames=("n_steps",)))
 
 
-@struct.dataclass
-class ReplayBuffer:
-    memory_size: int
-    batch_size: int
+class BufferState(struct.PyTreeNode):
+    transitions: Transition
+    last: int = -1
+    size: int = 0
 
-    def init(self, sample: Transition):
-        return sample
 
-    def push(self, state, transition: Transition):
-        return state
+class ReplayBuffer(struct.PyTreeNode):
+    capacity: int = 1024 * 16
 
-    def sample(self, state):
-        return state
+    def init(self, sample: Transition) -> BufferState:
+        memory = jax.tree_map(lambda x: jnp.zeros((self.capacity, *x.shape[1:]), x.dtype), sample)
+        return BufferState(memory)
+
+    @jax.jit
+    def push(self, state: BufferState, transition: Transition):
+        n_items = jax.tree_flatten(transition)[0][0].shape[0]
+        assert [n_items == x.shape[0] for x in jax.tree_flatten(transition)[0]]
+
+        def update_circular_buffer(mem, elem):
+            idxs = (jnp.arange(n_items) + state.last + 1) % self.capacity
+            mem = mem.at[idxs].set(elem)
+            return mem
+
+        new_size = state.size + n_items
+        new_size = jax.lax.select(self.capacity < new_size, self.capacity, new_size)
+        new_last = (state.last + n_items) % self.capacity
+        new_trans_mem = jax.tree_map(update_circular_buffer, state.transitions, transition)
+        return state.replace(transitions=new_trans_mem, last=new_last, size=new_size)
+
+    @partial(jax.jit, static_argnames=("batch_size",))
+    def sample(self, state: BufferState, rng_key: jax.Array, batch_size: int) -> Transition:
+        idxs = jax.random.randint(rng_key, shape=(batch_size,), minval=0, maxval=state.size)
+        return jax.tree_map(lambda x: x[idxs], state.transitions)
