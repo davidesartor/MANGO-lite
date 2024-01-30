@@ -6,6 +6,8 @@ import jax
 import jax.numpy as jnp
 import optax
 
+import qlearning
+import replay
 from frozen_lake import EnvState, FrozenLake, ObsType, ActType, RNGKey
 
 
@@ -17,6 +19,31 @@ class Transition(struct.PyTreeNode):
     reward: float
     done: bool
     info: dict
+
+
+class EnvState(struct.PyTreeNode):
+    agent_pos: jax.Array
+    goal_pos: jax.Array
+
+
+class Mango(struct.PyTreeNode):
+    env: FrozenLake
+    qnet_apply_fn: Callable = struct.field(pytree_node=False)
+    policy: Callable = struct.field(pytree_node=False)
+
+    @classmethod
+    def make(cls, rng_key: RNGKey, env: FrozenLake, policy):
+        ...
+
+    @jax.jit
+    def reset(self, rng_key: RNGKey):
+        return self.env.reset(rng_key)
+
+    @partial(jax.jit, donate_argnames=("state",))
+    def step(
+        self, rng_key: RNGKey, state: EnvState, action: ActType
+    ) -> tuple[EnvState, ObsType, float, bool, dict]:
+        return self.env.step(rng_key, state, action)
 
 
 class RolloutManager(struct.PyTreeNode):
@@ -56,19 +83,3 @@ class RolloutManager(struct.PyTreeNode):
             scan_compatible_step, self.env.reset(rng_reset), jnp.array(rng_steps)
         )
         return transitions
-
-
-class ConvNet(nn.Module):
-    hidden: Sequence[int]
-    out: int
-
-    @nn.compact
-    def __call__(self, x):
-        for ch in self.hidden:
-            x = nn.Conv(ch, (3, 3))(x)
-            x = nn.celu(x)
-            x = nn.Conv(ch, (2, 2), strides=(2, 2))(x)
-            x = nn.LayerNorm()(x)
-        x = x.flatten()
-        x = nn.Dense(features=self.out)(x)
-        return x

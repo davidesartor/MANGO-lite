@@ -21,7 +21,7 @@ class FrozenLake(struct.PyTreeNode):
     frozen: jax.Array
     agent_start: jax.Array
     goal_start: jax.Array
-    action_space: ClassVar[spaces.Space] = spaces.Discrete(4)
+    action_space: spaces.Space = struct.field(pytree_node=False, default=spaces.Discrete(4))
 
     @classmethod
     @partial(jax.jit, static_argnames=("cls", "shape"))
