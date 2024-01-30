@@ -1,4 +1,4 @@
-from functools import partial, wraps
+from functools import partial
 from typing import ClassVar, Optional
 import spaces
 
@@ -7,10 +7,9 @@ import jax.numpy as jnp
 from flax import struct
 
 
-class EnvParams(struct.PyTreeNode):
-    frozen: jax.Array
-    agent_start: jax.Array
-    goal_start: jax.Array
+RNGKey = jax.Array
+ObsType = jax.Array
+ActType = jax.Array
 
 
 class EnvState(struct.PyTreeNode):
@@ -18,75 +17,66 @@ class EnvState(struct.PyTreeNode):
     goal_pos: jax.Array
 
 
-RNGKey = jax.Array
-ObsType = jax.Array
-ActType = jax.Array
-
-
-class FrozenLake:
+class FrozenLake(struct.PyTreeNode):
+    frozen: jax.Array
+    agent_start: jax.Array
+    goal_start: jax.Array
     action_space: ClassVar[spaces.Space] = spaces.Discrete(4)
 
-    def __init__(
-        self,
+    @classmethod
+    # @partial(jax.jit, static_argnames=("cls", "shape"))
+    def make(
+        cls,
+        rng_key: RNGKey,
         shape: tuple[int, int],
         frozen_prob: Optional[float] = None,
         frozen_prob_high: Optional[float] = None,
     ):
-        self.shape = shape
-        self.frozen_prob = frozen_prob
-        self.frozen_prob_high = frozen_prob_high
-
-    @partial(jax.jit, static_argnums=0)
-    def init(self, rng_key: RNGKey) -> EnvParams:
-        if self.frozen_prob is None:
-            frozen = get_preset_map(self.shape)
+        if frozen_prob is None:
+            frozen = get_preset_map(shape)
             agent_start = jnp.array([[0, 0]])
-            goal_start = jnp.array([[s - 1 for s in self.shape]])
+            goal_start = jnp.array([[s - 1 for s in shape]])
         else:
             rng_p, rng_gen = jax.random.split(rng_key)
-            p_high = self.frozen_prob_high or self.frozen_prob
-            p = jax.random.uniform(rng_p, minval=self.frozen_prob, maxval=p_high)
-            frozen = generate_frozen_chunk(rng_gen, self.shape, p)
-            agent_start = jnp.indices(self.shape)[:, frozen].T
-            goal_start = jnp.indices(self.shape)[:, frozen].T
-        return EnvParams(frozen, agent_start, goal_start)
+            p_high = frozen_prob_high or frozen_prob
+            p = jax.random.uniform(rng_p, minval=frozen_prob, maxval=p_high)
+            frozen = generate_frozen_chunk(rng_gen, shape, p)
+            agent_start = jnp.indices(shape)[:, frozen].T
+            goal_start = jnp.indices(shape)[:, frozen].T
+        return cls(frozen, agent_start, goal_start)
 
-    @partial(jax.jit, static_argnums=0)
-    def reset(self, params: EnvParams, rng_key: RNGKey) -> tuple[EnvState, ObsType]:
+    @jax.jit
+    def reset(self, rng_key: RNGKey) -> tuple[EnvState, ObsType]:
         rng_agent, rng_goal, rng_obs = jax.random.split(rng_key, 3)
-        agent_pos = jax.random.choice(rng_agent, params.agent_start)
-        goal_pos = jax.random.choice(rng_goal, params.goal_start)
+        agent_pos = jax.random.choice(rng_agent, self.agent_start)
+        goal_pos = jax.random.choice(rng_goal, self.goal_start)
         state = jax.lax.stop_gradient(EnvState(agent_pos, goal_pos))
-        obs = self.get_obs(params, rng_obs, state)
+        obs = self.get_obs(rng_obs, state)
         return state, obs
 
-    @partial(jax.jit, static_argnums=0)
+    @partial(jax.jit, donate_argnames=("state",))
     def step(
-        self, params: EnvParams, rng_key: RNGKey, state: EnvState, action: ActType
+        self, rng_key: RNGKey, state: EnvState, action: ActType
     ) -> tuple[EnvState, ObsType, float, bool, dict]:
-        LEFT, DOWN, RIGHT, UP = jnp.array(0), jnp.array(1), jnp.array(2), jnp.array(3)
-        delta = jnp.select(
-            [action == LEFT, action == DOWN, action == RIGHT, action == UP],
-            [jnp.array([0, -1]), jnp.array([1, 0]), jnp.array([0, 1]), jnp.array([-1, 0])],
-        )
-        new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(params.frozen.shape) - 1)
+        delta = jnp.array([[0, -1], [1, 0], [0, 1], [-1, 0]])[action]
+        new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(self.frozen.shape) - 1)
         state = state.replace(agent_pos=new_agent_pos)
-        obs = self.get_obs(params, rng_key, state)
+        obs = self.get_obs(rng_key, state)
 
         reward, done = jax.lax.cond(
             (state.agent_pos == state.goal_pos).all(),
             lambda: (1.0, True),
-            lambda: (0.0, ~params.frozen[tuple(state.agent_pos)]),
+            lambda: (0.0, ~self.frozen[tuple(state.agent_pos)]),
         )
         return state, obs, reward, done, {}
 
-    @partial(jax.jit, static_argnums=0)
-    def get_obs(self, params: EnvParams, rng_key: RNGKey, state: EnvState) -> ObsType:
+    @jax.jit
+    def get_obs(self, rng_key: RNGKey, state: EnvState) -> ObsType:
         # one-hot encoding of the observation
-        obs = jnp.zeros((*params.frozen.shape, 3))
+        obs = jnp.zeros((*self.frozen.shape, 3))
         obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)
         obs = obs.at[state.goal_pos[0], state.goal_pos[1], 1].set(1)
-        obs = obs.at[:, :, 2].set(~params.frozen)
+        obs = obs.at[:, :, 2].set(~self.frozen)
         return jax.lax.stop_gradient(obs)
 
 

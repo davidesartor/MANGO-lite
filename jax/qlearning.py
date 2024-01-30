@@ -48,7 +48,7 @@ class DDQNTrainState(TrainState):
         def td_loss_fn(params, params_targ, transition):
             batched_td_fn = jax.vmap(self.temporal_difference, in_axes=(None, None, 0))
             td = batched_td_fn(params, params_targ, transition)
-            return optax.huber_loss(td).mean()
+            return optax.squared_error(td).mean()
 
         return jax.grad(td_loss_fn)(self.params, self.params_targ, transitions)
 

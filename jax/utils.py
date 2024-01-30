@@ -7,7 +7,7 @@ from flax import struct
 from flax import linen as nn
 import optax
 
-from frozen_lake import EnvState, EnvParams, FrozenLake, ObsType, ActType, RNGKey
+from frozen_lake import EnvState, FrozenLake, ObsType, ActType, RNGKey
 
 
 class Transition(struct.PyTreeNode):
@@ -54,7 +54,6 @@ def get_rollout_fn(
     policy_apply_fn: Callable[[optax.Params, float, RNGKey, ObsType], ActType],
 ):
     def rollout(
-        env_params: EnvParams,
         policy_params: optax.Params,
         epsilon: float,
         rng_key: RNGKey,
@@ -64,58 +63,21 @@ def get_rollout_fn(
             env_state, obs = carry
             rng_key, rng_obs, rng_action, rng_step, rng_reset = jax.random.split(rng_key, 5)
             action: jax.Array = policy_apply_fn(policy_params, epsilon, rng_action, obs)
-            next_env_state, next_obs, reward, done, info = env.step(
-                env_params, rng_step, env_state, action
-            )
+            next_env_state, next_obs, reward, done, info = env.step(rng_step, env_state, action)
             transition = Transition(env_state, obs, action, next_obs, reward, done, info)
 
             # reset the environment if done
             carry = jax.lax.cond(
                 done,
-                lambda: env.reset(env_params, rng_reset),
+                lambda: env.reset(rng_reset),
                 lambda: (next_env_state, next_obs),
             )
             return carry, transition
 
         rng_key, rng_reset, rng_scan = jax.random.split(rng_key, 3)
-        env_state, obs = env.reset(env_params, rng_reset)
+        env_state, obs = env.reset(rng_reset)
         rng_steps = jax.random.split(rng_scan, n_steps)
         final_state, transitions = jax.lax.scan(scan_compatible_step, (env_state, obs), rng_steps)
         return transitions
 
     return wraps(rollout)(jax.jit(rollout, static_argnames=("n_steps",)))
-
-
-class BufferState(struct.PyTreeNode):
-    transitions: Transition
-    last: int = -1
-    size: int = 0
-
-
-class ReplayBuffer(struct.PyTreeNode):
-    capacity: int = 1024 * 16
-
-    def init(self, sample: Transition) -> BufferState:
-        memory = jax.tree_map(lambda x: jnp.zeros((self.capacity, *x.shape[1:]), x.dtype), sample)
-        return BufferState(memory)
-
-    @jax.jit
-    def push(self, state: BufferState, transition: Transition):
-        n_items = jax.tree_flatten(transition)[0][0].shape[0]
-        assert [n_items == x.shape[0] for x in jax.tree_flatten(transition)[0]]
-
-        def update_circular_buffer(mem, elem):
-            idxs = (jnp.arange(n_items) + state.last + 1) % self.capacity
-            mem = mem.at[idxs].set(elem)
-            return mem
-
-        new_size = state.size + n_items
-        new_size = jax.lax.select(self.capacity < new_size, self.capacity, new_size)
-        new_last = (state.last + n_items) % self.capacity
-        new_trans_mem = jax.tree_map(update_circular_buffer, state.transitions, transition)
-        return state.replace(transitions=new_trans_mem, last=new_last, size=new_size)
-
-    @partial(jax.jit, static_argnames=("batch_size",))
-    def sample(self, state: BufferState, rng_key: jax.Array, batch_size: int) -> Transition:
-        idxs = jax.random.randint(rng_key, shape=(batch_size,), minval=0, maxval=state.size)
-        return jax.tree_map(lambda x: x[idxs], state.transitions)
