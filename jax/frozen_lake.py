@@ -24,7 +24,7 @@ class FrozenLake(struct.PyTreeNode):
     action_space: ClassVar[spaces.Space] = spaces.Discrete(4)
 
     @classmethod
-    # @partial(jax.jit, static_argnames=("cls", "shape"))
+    @partial(jax.jit, static_argnames=("cls", "shape"))
     def make(
         cls,
         rng_key: RNGKey,
