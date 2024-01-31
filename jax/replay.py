@@ -7,17 +7,7 @@ from flax import struct
 from flax import linen as nn
 import optax
 
-from frozen_lake import EnvState, ObsType, ActType
-
-
-class Transition(struct.PyTreeNode):
-    env_state: EnvState
-    obs: ObsType
-    action: ActType
-    next_obs: ObsType
-    reward: float
-    done: bool
-    info: dict
+from utils import FrozenLake, ObsType, ActType, RNGKey, Transition
 
 
 class CircularBuffer(struct.PyTreeNode):

@@ -56,7 +56,7 @@ class FrozenLake(struct.PyTreeNode):
 
     @partial(jax.jit, donate_argnames=("state",))
     def step(
-        self, rng_key: RNGKey, state: EnvState, action: ActType
+        self, state: EnvState, rng_key: RNGKey, action: ActType
     ) -> tuple[EnvState, ObsType, float, bool, dict]:
         delta = jnp.array([[0, -1], [1, 0], [0, 1], [-1, 0]])[action]
         new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(self.frozen.shape) - 1)

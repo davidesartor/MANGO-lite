@@ -1,5 +1,5 @@
-from functools import partial
-from typing import Callable, Sequence
+from functools import partial, wraps
+from typing import Any, Callable, Protocol, Sequence
 from flax import struct
 from flax import linen as nn
 import jax
@@ -19,45 +19,6 @@ class Transition(struct.PyTreeNode):
     info: dict
 
 
-class RolloutManager(struct.PyTreeNode):
-    env: FrozenLake
-    qnet_apply_fn: Callable = struct.field(pytree_node=False)
-
-    @partial(jax.jit, static_argnames=("n_steps"))
-    def eps_greedy(self, params: optax.Params, rng_key: RNGKey, epsilon: float, n_steps: int):
-        def get_action(rng_key: RNGKey, obs: ObsType) -> ActType:
-            rng_eps, rng_action = jax.random.split(rng_key)
-            qval = self.qnet_apply_fn(params, obs)
-            return jax.lax.select(
-                jax.random.uniform(rng_eps) < epsilon,
-                jax.random.randint(rng_action, shape=(), minval=0, maxval=qval.size),
-                qval.argmax(),
-            )
-
-        def scan_compatible_step(carry, rng_key: RNGKey):
-            env_state, obs = carry
-            rng_action, rng_step, rng_reset = jax.random.split(rng_key, 3)
-            action = get_action(rng_action, obs)
-            next_env_state, next_obs, reward, done, info = self.env.step(
-                rng_step, env_state, action
-            )
-            transition = Transition(env_state, obs, action, next_obs, reward, done, info)
-
-            # reset the environment if done
-            carry = jax.lax.cond(
-                done,
-                lambda: self.env.reset(rng_reset),
-                lambda: (next_env_state, next_obs),
-            )
-            return carry, transition
-
-        rng_reset, *rng_steps = jax.random.split(rng_key, n_steps + 1)
-        final_state, transitions = jax.lax.scan(
-            scan_compatible_step, self.env.reset(rng_reset), jnp.array(rng_steps)
-        )
-        return transitions
-
-
 class ConvNet(nn.Module):
     hidden: Sequence[int]
     out: int
@@ -72,3 +33,19 @@ class ConvNet(nn.Module):
         x = x.flatten()
         x = nn.Dense(features=self.out)(x)
         return x
+
+
+def epsilon_greedy_policy(qval_apply_fn: Callable):
+    def policy_fn(
+        params: optax.Params, rng_key: RNGKey, obs: ObsType, randomness: float
+    ) -> ActType:
+        rng_eps, rng_action = jax.random.split(rng_key)
+        qval = qval_apply_fn(params, obs)
+        action = jax.lax.select(
+            jax.random.uniform(rng_eps) < randomness,
+            jax.random.randint(rng_action, shape=(), minval=0, maxval=qval.size),
+            qval.argmax(),
+        )
+        return action
+
+    return wraps(policy_fn)(jax.jit(policy_fn))
