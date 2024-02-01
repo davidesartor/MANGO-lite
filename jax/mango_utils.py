@@ -105,4 +105,4 @@ def eps_greedy_rollout(
     _, (transitions, betas) = jax.lax.scan(
         scan_body, (env_state, obs, actions, betas), jax.random.split(rng_scan, steps)
     )
-    return transitions
+    return transitions, betas

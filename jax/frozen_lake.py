@@ -58,7 +58,7 @@ class FrozenLake(struct.PyTreeNode):
     def step(
         self, state: EnvState, rng_key: RNGKey, action: ActType
     ) -> tuple[EnvState, ObsType, float, bool, dict]:
-        delta = jnp.array([[0, -1], [1, 0], [0, 1], [-1, 0]])[action]
+        delta = jnp.array([[0, -1], [1, 0], [0, 1], [-1, 0], [0, 0]])[action]
         new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(self.frozen.shape) - 1)
         state = state.replace(agent_pos=new_agent_pos)
         obs = self.get_obs(rng_key, state)
