@@ -57,3 +57,4 @@ def render(env: FrozenLake, state: EnvState):
         y, x = jnp.where(frequency > 0)
         plt.scatter(x, y + 0.15, marker="o", s=400, c="pink", edgecolors="k", alpha=alpha[y, x])  # type: ignore
         plt.scatter(x, y - 0.15, marker="^", s=400, c="green", edgecolors="k", alpha=alpha[y, x])  # type: ignore
+    plt.show()
