@@ -92,12 +92,14 @@ def eps_greedy_rollout(
     def scan_body(carry, rng_key):
         env_state, obs, actions_prev, betas = carry
 
-        rng_action, rng_step, rng_reset = jax.random.split(rng_key, 3)
+        rng_action, rng_step, rng_reset, rng_beta = jax.random.split(rng_key, 4)
 
         actions = get_actions(rng_action, obs, actions_prev, betas, epsilons)
         next_env_state, next_obs, reward, done, info = env.step(env_state, rng_step, actions[-1])
 
-        betas = mango_dql_state.beta_fn(obs, next_obs)
+        beta_prob = mango_dql_state.beta_fn(obs, next_obs)
+        betas = jax.random.uniform(rng_beta, beta_prob.shape) < beta_prob
+
         transition_list = [
             Transition(env_state, obs, a, next_obs, reward, done, info) for a in actions
         ]

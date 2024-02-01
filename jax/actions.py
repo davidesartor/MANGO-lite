@@ -29,4 +29,4 @@ def reward_fn(cell_size, transition):
 def beta_fn(cell_size, obs, next_obs):
     cell_start = grid_coord(obs, cell_size)
     cell_end = grid_coord(next_obs, cell_size)
-    return (cell_start != cell_end).any()
+    return jax.lax.select((cell_start != cell_end).any(), 1.0, 0.1)
