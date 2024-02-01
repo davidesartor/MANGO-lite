@@ -43,6 +43,12 @@ class MangoDQLTrainState(struct.PyTreeNode):
     beta_fn: Callable[[ObsType, ObsType], jax.Array] = struct.field(pytree_node=False)
     reward_fn: Callable[[Transition], jax.Array] = struct.field(pytree_node=False)
 
+    @partial(jax.jit, donate_argnames=("self",))
+    def update_params_qnet(self, transitions: list[Transition]):
+        outer = self.outer.update_params_qnet(transitions[0])
+        inner = [state.update_params_qnet(t) for state, t in zip(self.inner, transitions[1:])]
+        return self.replace(outer=outer, inner=inner)
+
 
 @partial(jax.jit, static_argnames=("steps",))
 def eps_greedy_rollout(
@@ -80,8 +86,8 @@ def eps_greedy_rollout(
 
     rng_env_reset, rng_scan = jax.random.split(rng_key)
     env_state, obs = env.reset(rng_env_reset)
-    actions = jnp.zeros((3,), dtype=int)
-    betas = jnp.ones((2,), dtype=bool)
+    actions = jnp.zeros((1 + len(mango_dql_state.inner),), dtype=int)
+    betas = jnp.ones((len(mango_dql_state.inner),), dtype=bool)
 
     def scan_body(carry, rng_key):
         env_state, obs, actions_prev, betas = carry
@@ -92,7 +98,9 @@ def eps_greedy_rollout(
         next_env_state, next_obs, reward, done, info = env.step(env_state, rng_step, actions[-1])
 
         betas = mango_dql_state.beta_fn(obs, next_obs)
-        transition = Transition(env_state, obs, actions, next_obs, reward, done, info)
+        transition_list = [
+            Transition(env_state, obs, a, next_obs, reward, done, info) for a in actions
+        ]
 
         # reset the environment if done
         next_env_state, next_obs = jax.lax.cond(
@@ -100,9 +108,24 @@ def eps_greedy_rollout(
             lambda: env.reset(rng_reset),
             lambda: (next_env_state, next_obs),
         )
-        return (next_env_state, next_obs, actions, betas), (transition, betas)
+        return (next_env_state, next_obs, actions, betas), (transition_list, betas)
 
-    _, (transitions, betas) = jax.lax.scan(
+    _, (transitions_lists, betas) = jax.lax.scan(
         scan_body, (env_state, obs, actions, betas), jax.random.split(rng_scan, steps)
     )
-    return transitions, betas
+    return transitions_lists, betas
+
+
+def aggregate(transitions, betas):
+    def scan_body(future, input):
+        current, beta = input
+        beta = beta | current.done
+        end_obs = jax.lax.select(beta, current.next_obs, future.next_obs)
+        reward = jax.lax.select(beta, current.reward, current.reward + future.reward)
+        aggr = current.replace(next_obs=end_obs, reward=reward, done=future.done | beta)
+        return aggr, aggr
+
+    end = jax.tree_map(lambda x: x[-1], transitions)
+    end = end.replace(reward=jnp.zeros_like(end.reward))
+    _, aggr_transitions = jax.lax.scan(scan_body, end, (transitions, betas), reverse=True)
+    return aggr_transitions

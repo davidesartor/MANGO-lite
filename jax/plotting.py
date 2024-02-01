@@ -11,15 +11,47 @@ def plot_qvals(
     env: FrozenLake,
     qnet_apply_fn: Callable[[optax.Params, ObsType], jax.Array],
     qnet_params: optax.Params,
+    hold: bool = False,
+    autoscale: bool = True,
 ):
-    plt.figure(figsize=(4, 3))
+    if not hold:
+        plt.figure(figsize=(4, 3))
     coords = zip(*jnp.indices(env.frozen.shape).reshape(2, -1))
     env_state, obs = env.reset(jax.random.PRNGKey(0))
     env_states = [env_state.replace(agent_pos=(y, x)) for y, x in coords]
     all_obs = [env.get_obs(jax.random.PRNGKey(0), state) for state in env_states]
     qvals = jnp.stack([qnet_apply_fn(qnet_params, obs) for obs in all_obs])
-    plt.imshow(qvals.max(axis=-1).reshape(env.frozen.shape), cmap="RdYlGn", vmin=0, vmax=1)
+    # scatter small arrows for actions
+    act = jnp.where(env.frozen.flatten(), qvals.argmax(axis=-1), jnp.nan)
+    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 0]
+    plt.scatter(x + 0.1, y, color="k", s=100, marker="3")
+    plt.plot(x - 0.1, y, "<k", markersize=8)
+
+    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 1]
+    plt.scatter(x, y - 0.1, color="k", s=100, marker="1")
+    plt.plot(x, y + 0.1, "vk", markersize=8)
+
+    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 2]
+    plt.scatter(x - 0.1, y, color="k", s=100, marker="4")
+    plt.plot(x + 0.1, y, ">k", markersize=8)
+
+    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 3]
+    plt.scatter(x, y + 0.1, color="k", s=100, marker="2")
+    plt.plot(x, y - 0.1, "^k", markersize=8)
+
+    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 4]
+    plt.scatter(x, y, color="k", s=100, marker="x")
+
+    # imshow qvals
+    qvals = jnp.where(env.frozen, qvals.max(axis=-1).reshape(env.frozen.shape), jnp.nan)
+    cmap = plt.cm.RdYlGn  # type: ignore
+    cmap.set_bad(color="cyan")
+    plt.imshow(qvals, cmap=cmap, vmin=None if autoscale else 0, vmax=None if autoscale else 1)
+    for y, x in coords:
+        plt.text(x, y, f"{act[y, x]:.0f}", ha="center", va="center")
     plt.colorbar()
+    if not hold:
+        plt.show()
 
 
 def render(env: FrozenLake, state: EnvState):
