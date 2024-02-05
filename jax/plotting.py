@@ -22,34 +22,46 @@ def plot_qvals(
     all_obs = [env.get_obs(jax.random.PRNGKey(0), state) for state in env_states]
     qvals = jnp.stack([qnet_apply_fn(qnet_params, obs) for obs in all_obs])
     # scatter small arrows for actions
-    act = jnp.where(env.frozen.flatten(), qvals.argmax(axis=-1), jnp.nan)
-    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 0]
+    frozen = env.frozen.at[tuple(env_state.goal_pos)].set(False)
+    act = jnp.where(frozen.flatten(), qvals.argmax(axis=-1), jnp.nan)
+
+    # left arrows
+    y, x = jnp.indices(frozen.shape).reshape(2, -1)[:, act == 0]
     plt.scatter(x + 0.1, y, color="k", s=100, marker="3")
     plt.plot(x - 0.1, y, "<k", markersize=8)
 
-    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 1]
+    # down arrows
+    y, x = jnp.indices(frozen.shape).reshape(2, -1)[:, act == 1]
     plt.scatter(x, y - 0.1, color="k", s=100, marker="1")
     plt.plot(x, y + 0.1, "vk", markersize=8)
 
-    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 2]
+    # right arrows
+    y, x = jnp.indices(frozen.shape).reshape(2, -1)[:, act == 2]
     plt.scatter(x - 0.1, y, color="k", s=100, marker="4")
     plt.plot(x + 0.1, y, ">k", markersize=8)
 
-    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 3]
+    # up arrows
+    y, x = jnp.indices(frozen.shape).reshape(2, -1)[:, act == 3]
     plt.scatter(x, y + 0.1, color="k", s=100, marker="2")
     plt.plot(x, y - 0.1, "^k", markersize=8)
 
-    y, x = jnp.indices(env.frozen.shape).reshape(2, -1)[:, act == 4]
+    # x for stop
+    y, x = jnp.indices(frozen.shape).reshape(2, -1)[:, act == 4]
     plt.scatter(x, y, color="k", s=100, marker="x")
 
+    # plot goal
+    y, x = env_state.goal_pos
+    plt.scatter(x, y, s=1000, marker="*", edgecolors="k", facecolors="orange")
+
     # imshow qvals
-    qvals = jnp.where(env.frozen, qvals.max(axis=-1).reshape(env.frozen.shape), jnp.nan)
+    qvals = jnp.where(frozen, qvals.max(axis=-1).reshape(frozen.shape), jnp.nan)
     cmap = plt.cm.RdYlGn  # type: ignore
     cmap.set_bad(color="cyan")
     plt.imshow(qvals, cmap=cmap, vmin=None if autoscale else 0, vmax=None if autoscale else 1)
-    for y, x in coords:
-        plt.text(x, y, f"{act[y, x]:.0f}", ha="center", va="center")
     plt.colorbar()
+
+    plt.xticks([])
+    plt.yticks([])
     if not hold:
         plt.show()
 

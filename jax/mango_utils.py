@@ -133,7 +133,7 @@ def eps_greedy_rollout(
         obs_stacked = jnp.repeat(obs[jnp.newaxis], epsilons.size, axis=0)
         actions = get_actions(rng_action, obs_stacked, actions_under_exec, betas, epsilons)
         next_env_state, next_obs, reward, done, info = env.step(env_state, rng_step, actions[-1])
-        transition = Transition(env_state, obs, actions[-1], reward, next_obs, done, info)
+        transition = Transition(env_state, obs, actions, reward, next_obs, done, info)
         betas, rewards = dql_state.beta_fn(transition)
         # atomic actions are not trained and always terminate after execution
         betas = jax.lax.select(done, jnp.ones_like(betas), betas)
