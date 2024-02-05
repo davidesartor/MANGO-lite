@@ -9,8 +9,8 @@ class Transition(struct.PyTreeNode):
     env_state: EnvState
     obs: ObsType
     action: ActType
-    next_obs: ObsType
     reward: float
+    next_obs: ObsType
     done: bool
     info: dict
 

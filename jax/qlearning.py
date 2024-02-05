@@ -86,7 +86,7 @@ def eps_greedy_rollout(
         rng_action, rng_step, rng_reset = jax.random.split(rng_key, 3)
         action = get_action(rng_action, obs)
         next_env_state, next_obs, reward, done, info = env.step(env_state, rng_step, action)
-        transition = Transition(env_state, obs, action, next_obs, reward, done, info)
+        transition = Transition(env_state, obs, action, reward, next_obs, done, info)
 
         # reset the environment if done
         next_env_state, next_obs = jax.lax.cond(

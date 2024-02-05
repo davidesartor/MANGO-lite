@@ -40,7 +40,7 @@ class MangoDQLTrainState(struct.PyTreeNode):
 
     outer: DQLTrainState
     inner: Sequence[MultiDQLTrainState]
-    beta_fn: Callable[[ObsType, ObsType], jax.Array] = struct.field(pytree_node=False)
+    beta_fn: Callable[[Transition], jax.Array] = struct.field(pytree_node=False)
     reward_fn: Callable[[Transition], jax.Array] = struct.field(pytree_node=False)
 
     @partial(jax.jit, donate_argnames=("self",))
@@ -97,18 +97,20 @@ def eps_greedy_rollout(
         actions = get_actions(rng_action, obs, actions_prev, betas, epsilons)
         next_env_state, next_obs, reward, done, info = env.step(env_state, rng_step, actions[-1])
 
-        beta_prob = mango_dql_state.beta_fn(obs, next_obs)
-        betas = jax.random.uniform(rng_beta, beta_prob.shape) < beta_prob
+        transition_list = [
+            Transition(env_state, obs, a, reward, next_obs, done, info) for a in actions
+        ]
+        betas = mango_dql_state.beta_fn(transition)
 
         transition_list = [
-            Transition(env_state, obs, a, next_obs, reward, done, info) for a in actions
+            Transition(env_state, obs, a, reward, next_obs, done, info) for a in actions
         ]
 
         # reset the environment if done
-        next_env_state, next_obs = jax.lax.cond(
+        next_env_state, next_obs, betas = jax.lax.cond(
             done,
-            lambda: env.reset(rng_reset),
-            lambda: (next_env_state, next_obs),
+            lambda: (*env.reset(rng_reset), jnp.ones_like(betas)),
+            lambda: (next_env_state, next_obs, betas),
         )
         return (next_env_state, next_obs, actions, betas), (transition_list, betas)
 
@@ -124,7 +126,7 @@ def aggregate(transitions, betas):
         beta = beta | current.done
         end_obs = jax.lax.select(beta, current.next_obs, future.next_obs)
         reward = jax.lax.select(beta, current.reward, current.reward + future.reward)
-        aggr = current.replace(next_obs=end_obs, reward=reward, done=future.done | beta)
+        aggr = current.replace(next_obs=end_obs, reward=reward, done=future.done | current.done)
         return aggr, aggr
 
     end = jax.tree_map(lambda x: x[-1], transitions)

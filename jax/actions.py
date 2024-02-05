@@ -26,7 +26,8 @@ def reward_fn(cell_size, transition):
 
 
 @partial(jax.vmap, in_axes=(0, None, None))
-def beta_fn(cell_size, obs, next_obs):
-    cell_start = grid_coord(obs, cell_size)
-    cell_end = grid_coord(next_obs, cell_size)
-    return jax.lax.select((cell_start != cell_end).any(), 1.0, 0.1)
+def beta_fn(cell_size, transition):
+    cell_start = grid_coord(transition.obs, cell_size)
+    cell_end = grid_coord(transition.next_obs, cell_size)
+    stop_cond = transition.action == 4 or (cell_start != cell_end).any()
+    return jax.lax.select(stop_cond, True, False)
