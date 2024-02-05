@@ -45,7 +45,7 @@ class DQLTrainState(struct.PyTreeNode):
         return td
 
     @partial(jax.jit, donate_argnames=("self",))
-    def update_params_qnet(self, transitions: Transition):
+    def update_params(self, transitions: Transition):
         def td_loss_fn(params_qnet, transitions):
             batched_td_fn = jax.vmap(self.temporal_difference, in_axes=(None, None, 0))
             td = batched_td_fn(params_qnet, self.params_qnet_targ, transitions)
@@ -90,9 +90,7 @@ def eps_greedy_rollout(
 
         # reset the environment if done
         next_env_state, next_obs = jax.lax.cond(
-            done,
-            lambda: env.reset(rng_reset),
-            lambda: (next_env_state, next_obs),
+            done, lambda: env.reset(rng_reset), lambda: (next_env_state, next_obs)
         )
         return (next_env_state, next_obs), transition
 
