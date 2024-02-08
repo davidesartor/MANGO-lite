@@ -24,8 +24,8 @@ def beta_fn(cell_sizes: jax.Array, transition: Transition) -> tuple[bool, jax.Ar
             cell_end[0] - cell_start[0] == -1,  # up
             transition.reward,  # goal
         ]
-        rewards = jnp.array(rewards, dtype=float)
-        rewards = 2 * rewards - rewards.max() - 0.05
+        rewards = jnp.array(rewards, dtype=float).at[:-1].add(-transition.done.astype(float))
+        rewards = 2 * rewards - rewards.max()
         stop_cond = (cell_start != cell_end).any()  # |(action == 4)
         return stop_cond, rewards
 

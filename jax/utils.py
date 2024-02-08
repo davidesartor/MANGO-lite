@@ -18,9 +18,15 @@ class Transition(struct.PyTreeNode):
 def eps_argmax(rng_key, qval, epsilon):
     """Return argmax with probability 1-epsilon, random idx otherwise."""
     rng_eps, rng_action = jax.random.split(rng_key)
-    greedy_action = qval.argmax()
-    rand_action = jax.random.choice(rng_action, qval.size)
-    return jax.lax.select(jax.random.uniform(rng_eps) > epsilon, greedy_action, rand_action)
+    return jax.lax.select(
+        jax.random.uniform(rng_eps) > epsilon,
+        qval.argmax(),
+        jax.random.choice(rng_action, qval.size),
+    )
+
+
+def soft_update(params_qnet_targ, params_qnet, tau):
+    return jax.tree_map(lambda pt, p: pt * (1 - tau) + p * tau, params_qnet_targ, params_qnet)
 
 
 class ConvNet(nn.Module):
@@ -37,3 +43,15 @@ class ConvNet(nn.Module):
         x = x.flatten()
         x = nn.Dense(features=self.out)(x)
         return x
+
+
+MultiConvNet = nn.vmap(
+    ConvNet,
+    in_axes=None,
+    variable_axes={"params": 0},
+    split_rngs={"params": True},
+    axis_size=5,
+)
+MultiLayerConvNet = nn.vmap(
+    MultiConvNet, in_axes=0, variable_axes={"params": 0}, split_rngs={"params": True}
+)

@@ -11,10 +11,6 @@ from utils import RNGKey, EnvState, ObsType, ActType, Transition, FrozenLake
 from qlearning import DQLTrainState
 
 
-def soft_update(params_qnet_targ, params_qnet, tau):
-    return jax.tree_map(lambda pt, p: pt * (1 - tau) + p * tau, params_qnet_targ, params_qnet)
-
-
 class MangoTransition(struct.PyTreeNode):
     env_state: EnvState
     obs: ObsType
@@ -88,7 +84,7 @@ class MultiDQLTrainState(struct.PyTreeNode):
         td_gradients = jax.grad(td_loss_fn)(self.params_qnet)
         updates, new_opt_state = self.optimizer.update(td_gradients, self.opt_state)
         new_params_qnet = optax.apply_updates(self.params_qnet, updates)
-        new_params_qnet_targ = soft_update(
+        new_params_qnet_targ = utils.soft_update(
             self.params_qnet_targ, new_params_qnet, self.soft_update_rate
         )
 
@@ -156,7 +152,6 @@ def eps_greedy_rollout(
     _, mango_transitions = jax.lax.scan(
         scan_body, (env_state, obs, actions, betas), jax.random.split(rng_scan, steps)
     )
-    mango_transitions = aggregate(mango_transitions)
     return mango_transitions
 
 
@@ -165,12 +160,17 @@ def aggregate(transitions):
         # at upper layers, accumulate all transitions in one lower step
         low_beta = current.betas[1:]
         end_obs = current.next_obs.at[:-1].set(
-            jnp.where(low_beta, current.next_obs[:-1], future.next_obs[:-1])
+            jnp.where(low_beta[:, None, None, None], current.next_obs[:-1], future.next_obs[:-1])
         )
         rewards = current.rewards.at[:-1].set(
-            jnp.where(low_beta, current.rewards[:-1], future.rewards[:-1] + current.rewards[:-1])
+            jnp.where(
+                low_beta[:, None], current.rewards[:-1], future.rewards[:-1] + current.rewards[:-1]
+            )
         )
-        aggr = current.replace(next_obs=end_obs, rewards=rewards)
+        betas = current.betas.at[:-1].set(
+            jnp.where(low_beta, current.betas[:-1], future.betas[:-1])
+        )
+        aggr = current.replace(next_obs=end_obs, rewards=rewards, betas=betas)
         return aggr, aggr
 
     end = jax.tree_map(lambda x: x[-1], transitions)
