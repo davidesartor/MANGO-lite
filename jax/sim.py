@@ -41,7 +41,9 @@ def run_q_learning_simulation(
         init_transitions = qlearning.eps_greedy_rollout(
             env, dql_state, rng_key, epsilon=0.0, steps=2
         )
-        replay_memory = replay.CircularBuffer.create(init_transitions)
+        replay_memory = replay.CircularBuffer.create(
+            init_transitions, capacity=train_iter * rollout_length
+        )
         return env, dql_state, replay_memory
 
     rng_init, rng_loop = jax.random.split(rng_key)
@@ -63,7 +65,7 @@ def run_q_learning_simulation(
         # policy training
         for rng_sample in jax.random.split(rng_train, train_iter):
             train_transitions = replay_memory.sample(rng_sample, rollout_length)
-            dql_state = dql_state.update_params_qnet(train_transitions)
+            dql_state = dql_state.update_params(train_transitions)
 
         # evaluation rollout
         eval_transitions = qlearning.eps_greedy_rollout(
@@ -109,15 +111,17 @@ def run_mango_simulation(
         cells = jnp.array([(2**i, 2**i) for i in reversed(range(1, n_layers + 1))])
         dql_state = mango_utils.MultiDQLTrainState.create(
             rng_dql,
-            utils.MultiLayerConvNet([16] * n_layers, n_actions),
+            utils.MultiLayerConvNet([2 * map_size] * n_layers, n_actions),
             obs=jnp.stack([env_obs] * n_layers),
             beta_fn=partial(actions.beta_fn, cells),
             optimizer=optax.adam(lr),
         )
 
         epsilons = annealing_fn(dql_state.step)
-        transitions = mango_utils.eps_greedy_rollout(env, dql_state, rng_key, epsilons, 2)
-        replay_memory = replay.CircularBuffer.create(transitions)
+        init_transitions = mango_utils.eps_greedy_rollout(env, dql_state, rng_key, epsilons, 2)
+        replay_memory = replay.CircularBuffer.create(
+            init_transitions, capacity=train_iter * rollout_length
+        )
         return env, dql_state, replay_memory
 
     rng_init, rng_loop = jax.random.split(rng_key)

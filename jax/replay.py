@@ -18,7 +18,7 @@ class CircularBuffer(struct.PyTreeNode):
 
     @classmethod
     @partial(jax.jit, static_argnames=("cls", "capacity"))
-    def create(cls, sample: Transition, capacity: int = 1024 * 16):
+    def create(cls, sample: Transition, capacity: int):
         memory = jax.tree_map(lambda x: jnp.zeros((capacity, *x.shape[1:]), x.dtype), sample)
         return cls(memory, capacity)
 
