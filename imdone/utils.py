@@ -53,7 +53,7 @@ def random_rollout(env: FrozenLake, rng_key: RNGKey, steps: int):
 
 class ConvNet(nn.Module):
     hidden: Sequence[int]
-    out: int | Sequence[int]
+    out: int
 
     @nn.compact
     def __call__(self, x):
@@ -63,5 +63,5 @@ class ConvNet(nn.Module):
             x = nn.Conv(ch, (2, 2), strides=(2, 2))(x)
             x = nn.LayerNorm()(x)
         x = x.flatten()
-        x = nn.DenseGeneral(features=self.out)(x)
+        x = nn.Dense(features=self.out)(x)
         return x

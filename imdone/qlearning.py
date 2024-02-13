@@ -70,14 +70,13 @@ class DQLTrainState(struct.PyTreeNode):
             opt_state=new_opt_state,
         )
 
+    @partial(jax.jit, static_argnames=("steps",))
+    def greedy_rollout(self, env: FrozenLake, rng_key: RNGKey, steps: int):
+        def get_action(rng_key: RNGKey, obs: ObsType) -> ActType:
+            qval = self.qval_apply_fn(self.params_qnet, obs)
+            return qval.argmax()
 
-@partial(jax.jit, static_argnames=("steps",))
-def greedy_rollout(env: FrozenLake, dql_state: DQLTrainState, rng_key: RNGKey, steps: int):
-    def get_action(rng_key: RNGKey, obs: ObsType) -> ActType:
-        qval = dql_state.qval_apply_fn(dql_state.params_qnet, obs)
-        return qval.argmax()
-
-    return utils.rollout(get_action, env, rng_key, steps)
+        return utils.rollout(get_action, env, rng_key, steps)
 
 
 class SimResults(NamedTuple):
@@ -102,7 +101,7 @@ def q_learning_step(sim_state, rng_key, rollout_length: int, train_iter: int):
         dql_state = dql_state.update_params(transitions)
 
     # evaluation rollout
-    evaluation = greedy_rollout(env, dql_state, rng_eval, rollout_length // 2)
+    evaluation = dql_state.greedy_rollout(env, rng_eval, rollout_length // 2)
 
     # log results
     results = SimResults(evaluation.reward, evaluation.done, exploration.reward, exploration.done)

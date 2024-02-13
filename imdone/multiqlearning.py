@@ -34,54 +34,35 @@ class MultiDQLTrainState(qlearning.DQLTrainState):
         return td
 
 
-@partial(jax.jit, static_argnames=("steps",))
-def greedy_rollout(
-    env: FrozenLake, dql_state: MultiDQLTrainState, rng_key: RNGKey, steps: int, task_id: int
-):
-    def get_action(rng_key: RNGKey, obs: ObsType) -> ActType:
-        qval = dql_state.qval_apply_fn(dql_state.params_qnet, obs)
-        return qval[task_id].argmax()
-
-    return utils.rollout(get_action, env, rng_key, steps)
-
-
-class SimResults(NamedTuple):
-    eval_reward: jax.Array
-    eval_done: jax.Array
-    expl_reward: jax.Array
-    expl_done: jax.Array
-
-
 @partial(jax.jit, donate_argnames=("sim_state",), static_argnames=("rollout_length", "train_iter"))
 def multi_q_learning_step(sim_state, rng_key, rollout_length: int, train_iter: int):
     (env, dql_state, replay_memory) = sim_state
     rng_expl, rng_train, rng_eval = jax.random.split(rng_key, 3)
 
-    # exploration rollout
     exploration = utils.random_rollout(env, rng_expl, rollout_length)
 
-    # use intrinsic signals
     intrinsic_reward = jax.vmap(dql_state.reward_fn)(exploration)
     intrinsic_done = jax.vmap(dql_state.beta_fn)(exploration)
     exploration = exploration.replace(reward=intrinsic_reward, done=intrinsic_done)
 
-    # store exploration in replay memory
     replay_memory = replay_memory.push(exploration)
 
-    # # policy training
     for rng_sample in jax.random.split(rng_train, train_iter):
         transitions = replay_memory.sample(rng_sample, min((rollout_length, 256)))
         dql_state = dql_state.update_params(transitions)
 
-    # evaluation rollout
-    multi_task_greedy_rollout = jax.vmap(greedy_rollout, in_axes=(None, None, None, None, -1))
-    evaluation = multi_task_greedy_rollout(env, dql_state, rng_eval, rollout_length, jnp.arange(5))
+    # # evaluation rollout
+    # multi_task_greedy_rollout = jax.vmap(
+    #     greedy_rollout, in_axes=(None, None, None, None, 0), out_axes=0
+    # )
+    # evaluation = multi_task_greedy_rollout(env, dql_state, rng_eval, rollout_length, jnp.arange(5))
 
-    # use intrinsic signals
-    intrinsic_reward = jax.vmap(dql_state.reward_fn)(evaluation)
-    intrinsic_done = jax.vmap(dql_state.beta_fn)(evaluation)
-    evaluation = evaluation.replace(reward=intrinsic_reward, done=intrinsic_done)
+    # # use intrinsic signals
+    # intrinsic_reward = jax.vmap(jax.vmap(dql_state.reward_fn), out_axes=-1)(evaluation)
+    # intrinsic_done = jax.vmap(jax.vmap(dql_state.beta_fn), out_axes=-1)(evaluation)
+    # evaluation = evaluation.replace(reward=intrinsic_reward, done=intrinsic_done)
 
-    # log results
-    results = SimResults(evaluation.reward, evaluation.done, exploration.reward, exploration.done)
+    # # log results
+    # results = SimResults(evaluation.reward, evaluation.done, exploration.reward, exploration.done)
+    results = None
     return (env, dql_state, replay_memory), results
