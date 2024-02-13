@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Callable
+from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 from flax import struct
@@ -7,6 +7,7 @@ from flax import linen as nn
 import optax
 
 from utils import FrozenLake, EnvState, ObsType, ActType, RNGKey, Transition
+import utils
 
 
 class DQLTrainState(struct.PyTreeNode):
@@ -22,13 +23,13 @@ class DQLTrainState(struct.PyTreeNode):
     step: int = 0
 
     @classmethod
-    def create(cls, rng_key: RNGKey, qnet: nn.Module, sample_obs: ObsType, lr: float):
+    def create(cls, rng_key: RNGKey, qnet: nn.Module, sample_obs: ObsType, lr: float, **kwargs):
         rng_qnet, rng_qnet_targ = jax.random.split(rng_key)
         params_qnet = qnet.init(rng_qnet, sample_obs)
         params_qnet_targ = qnet.init(rng_qnet_targ, sample_obs)
         optimizer = optax.adam(lr)
         opt_state = optimizer.init(params_qnet)
-        return cls(params_qnet, params_qnet_targ, opt_state, qnet.apply, optimizer)
+        return cls(params_qnet, params_qnet_targ, opt_state, qnet.apply, optimizer, **kwargs)
 
     @jax.jit
     def temporal_difference(
@@ -38,7 +39,7 @@ class DQLTrainState(struct.PyTreeNode):
         transition: Transition,
     ) -> jax.Array:
         qstart = self.qval_apply_fn(params_qnet, transition.obs)
-        qselected = jnp.take(qstart, transition.action)
+        qselected = qstart[transition.action]
         qnext = self.qval_apply_fn(params_qnet_targ, transition.next_obs)
         qnext = jax.lax.select(transition.done, 0.0, qnext.max())
         td = qselected - (transition.reward + self.td_discount * qnext)
@@ -68,3 +69,41 @@ class DQLTrainState(struct.PyTreeNode):
             params_qnet_targ=new_params_qnet_targ,
             opt_state=new_opt_state,
         )
+
+
+@partial(jax.jit, static_argnames=("steps",))
+def greedy_rollout(env: FrozenLake, dql_state: DQLTrainState, rng_key: RNGKey, steps: int):
+    def get_action(rng_key: RNGKey, obs: ObsType) -> ActType:
+        qval = dql_state.qval_apply_fn(dql_state.params_qnet, obs)
+        return qval.argmax()
+
+    return utils.rollout(get_action, env, rng_key, steps)
+
+
+class SimResults(NamedTuple):
+    eval_reward: jax.Array
+    eval_done: jax.Array
+    expl_reward: jax.Array
+    expl_done: jax.Array
+
+
+@partial(jax.jit, donate_argnames=("sim_state",), static_argnames=("rollout_length", "train_iter"))
+def q_learning_step(sim_state, rng_key, rollout_length: int, train_iter: int):
+    (env, dql_state, replay_memory) = sim_state
+    rng_expl, rng_train, rng_eval = jax.random.split(rng_key, 3)
+
+    # exploration rollout
+    exploration = utils.random_rollout(env, rng_expl, rollout_length)
+    replay_memory = replay_memory.push(exploration)
+
+    # # policy training
+    for rng_sample in jax.random.split(rng_train, train_iter):
+        transitions = replay_memory.sample(rng_sample, min((rollout_length, 256)))
+        dql_state = dql_state.update_params(transitions)
+
+    # evaluation rollout
+    evaluation = greedy_rollout(env, dql_state, rng_eval, rollout_length // 2)
+
+    # log results
+    results = SimResults(evaluation.reward, evaluation.done, exploration.reward, exploration.done)
+    return (env, dql_state, replay_memory), results
