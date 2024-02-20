@@ -43,9 +43,9 @@ def multi_q_learning_step(sim_state, rng_key, rollout_length: int, train_iter: i
 
     intrinsic_reward = jax.vmap(dql_state.reward_fn)(exploration)
     intrinsic_done = jax.vmap(dql_state.beta_fn)(exploration)
-    exploration = exploration.replace(reward=intrinsic_reward, done=intrinsic_done)
+    exploration_repl = exploration.replace(reward=intrinsic_reward, done=intrinsic_done)
 
-    replay_memory = replay_memory.push(exploration)
+    replay_memory = replay_memory.push(exploration_repl)
 
     for rng_sample in jax.random.split(rng_train, train_iter):
         transitions = replay_memory.sample(rng_sample, min((rollout_length, 256)))

@@ -53,7 +53,7 @@ def plot_qvals(
     autoscale: bool = True,
 ):
     if not hold:
-        plt.figure(figsize=(4, 3))
+        plt.figure(figsize=(1 + env.frozen.shape[1], env.frozen.shape[0]))
     coords = zip(*jnp.indices(env.frozen.shape).reshape(2, -1))
     env_state, obs = env.reset(rng_reset)
     env_states = [env_state.replace(agent_pos=(y, x)) for y, x in coords]

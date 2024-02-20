@@ -16,6 +16,7 @@ class MangoState(struct.PyTreeNode):
 class MangoEnv(struct.PyTreeNode):
     lower_layer: FrozenLake
     dql_state: MultiDQLTrainState
+    max_steps: jnp.int_ = struct.field(pytree_node=False, default=jnp.inf)
     action_space: spaces.Discrete = struct.field(pytree_node=False, default=spaces.Discrete(5))
 
     @jax.jit
@@ -32,11 +33,11 @@ class MangoEnv(struct.PyTreeNode):
             return qval[comand].argmax()
 
         def while_cond(carry):
-            rng_key, state, beta, done, cum_reward = carry
-            return ~(beta | done)
+            i, rng_key, state, beta, done, cum_reward = carry
+            return ~(beta | done) & (i < self.max_steps)
 
         def while_body(carry):
-            rng_key, state, beta, done, cum_reward = carry
+            i, rng_key, state, beta, done, cum_reward = carry
             rng_key, rng_action, rng_lower = jax.random.split(rng_key, 3)
             action = get_action(rng_action, state.obs)
             next_env_state, next_obs, reward, done, info = self.lower_layer.step(
@@ -45,9 +46,9 @@ class MangoEnv(struct.PyTreeNode):
             transition = Transition(state, state.obs, action, reward, next_obs, done, info)
             beta = self.dql_state.beta_fn(transition)
             state = MangoState(next_env_state, next_obs)
-            return (rng_key, state, beta, done, cum_reward + reward)
+            return (i + 1, rng_key, state, beta, done, cum_reward + reward)
 
-        (rng_key, state, beta, done, cum_reward) = jax.lax.while_loop(
-            while_cond, while_body, (rng_key, state, False, False, 0.0)
+        (steps, rng_key, state, beta, done, cum_reward) = jax.lax.while_loop(
+            while_cond, while_body, (0, rng_key, state, False, False, 0.0)
         )
         return state, state.obs, cum_reward, done, {}
