@@ -99,6 +99,7 @@ class FrozenLake(struct.PyTreeNode):
 
     @jax.jit
     def get_obs(self, rng_key: RNGKey, state: EnvState) -> ObsType:
+        return jnp.stack([state.agent_pos, state.goal_pos], axis=0)
         # one-hot encoding of the observation
         obs = jnp.zeros((*self.frozen.shape, 2))
         obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)

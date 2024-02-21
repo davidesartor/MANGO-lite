@@ -5,9 +5,10 @@ from utils import Transition, ObsType
 
 
 def grid_coord(obs: ObsType, cell_scale: int) -> jax.Array:
-    row, col, cha = obs.shape
-    agent_idx = obs[:, :, 0].argmax()
-    coord = jnp.array(divmod(agent_idx, col))
+    # row, col, cha = obs.shape
+    # agent_idx = obs[:, :, 0].argmax()
+    # coord = jnp.array(divmod(agent_idx, col))
+    coord = obs[0]
     return coord // 2**cell_scale
 
 
