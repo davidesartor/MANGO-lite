@@ -2,17 +2,32 @@ from functools import partial
 from flax import struct
 import jax
 import jax.numpy as jnp
+from typing import Callable
 
 import spaces
 from frozen_lake import RNGKey, ObsType, ActType, Env, EnvState, Transition
-from qlearning import MultiDQLTrainState
 
 
 class MangoEnv(struct.PyTreeNode):
     lower_layer: Env
-    dql_state: MultiDQLTrainState
+
     max_steps: jnp.int_ = struct.field(pytree_node=False, default=jnp.inf)
     action_space: spaces.Discrete = struct.field(pytree_node=False, default=spaces.Discrete(5))
+
+    get_action_fn: Callable[[ActType, RNGKey, ObsType], ActType] = struct.field(
+        pytree_node=False, default=lambda comand, rng_key, obs: comand
+    )
+    beta_fn: Callable[[Transition], bool] = struct.field(
+        pytree_node=False, default=lambda transition: False
+    )
+
+    @classmethod
+    def from_dql_state(cls, lower_layer: Env, dql_state, *kwargs):
+        def get_action(comand, rng_key: RNGKey, obs: ObsType) -> ActType:
+            qval = dql_state.qval_apply_fn(dql_state.params_qnet, obs)
+            return qval[comand].argmax()
+
+        return cls(lower_layer, get_action, dql_state.beta_fn, *kwargs)
 
     @jax.jit
     def reset(self, rng_key: RNGKey):
@@ -26,10 +41,6 @@ class MangoEnv(struct.PyTreeNode):
     def step(
         self, env_state: EnvState, rng_key: RNGKey, comand: ActType
     ) -> tuple[EnvState, ObsType, jnp.float32, jnp.bool_, dict]:
-        def get_action(rng_key: RNGKey, obs: ObsType) -> ActType:
-            qval = self.dql_state.qval_apply_fn(self.dql_state.params_qnet, obs)
-            return qval[comand].argmax()
-
         def while_cond(carry):
             i, rng_key, env_state, obs, cum_reward, done, beta = carry
             return ~(beta | done)
@@ -38,12 +49,12 @@ class MangoEnv(struct.PyTreeNode):
             i, rng_key, env_state, obs, cum_reward, done, beta = carry
             rng_key, rng_action, rng_lower = jax.random.split(rng_key, 3)
 
-            action = get_action(rng_action, obs)
+            action = self.get_action_fn(comand, rng_action, obs)
             next_env_state, next_obs, reward, done, info = self.lower_layer.step(
                 env_state, rng_lower, action
             )
             transition = Transition(env_state, obs, action, reward, next_obs, done, info)
-            beta = self.dql_state.beta_fn(transition)
+            beta = self.beta_fn(transition)
             done = done | (i > self.max_steps)
             return (i + 1, rng_key, next_env_state, next_obs, cum_reward + reward, done, beta)
 

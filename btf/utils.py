@@ -3,21 +3,7 @@ from typing import Callable, Generic, TypeVar
 import jax
 import jax.numpy as jnp
 from flax import struct
-from flax import linen as nn
 from frozen_lake import Env, ObsType, ActType, RNGKey, Transition
-
-
-class MLP(nn.Module):
-    out: int
-    hidden: int = 512
-
-    @nn.compact
-    def __call__(self, x):
-        x = x.flatten()
-        x = nn.Dense(self.hidden)(x)
-        x = nn.gelu(x)
-        x = nn.Dense(self.out)(x)
-        return x
 
 
 def rollout(
