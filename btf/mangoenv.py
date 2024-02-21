@@ -10,24 +10,22 @@ from frozen_lake import RNGKey, ObsType, ActType, Env, EnvState, Transition
 
 class MangoEnv(struct.PyTreeNode):
     lower_layer: Env
-
-    max_steps: jnp.int_ = struct.field(pytree_node=False, default=jnp.inf)
-    action_space: spaces.Discrete = struct.field(pytree_node=False, default=spaces.Discrete(5))
-
     get_action_fn: Callable[[ActType, RNGKey, ObsType], ActType] = struct.field(
         pytree_node=False, default=lambda comand, rng_key, obs: comand
     )
     beta_fn: Callable[[Transition], bool] = struct.field(
-        pytree_node=False, default=lambda transition: False
+        pytree_node=False, default=lambda transition: True
     )
+    max_steps: jnp.int_ = struct.field(pytree_node=False, default=jnp.inf)
+    action_space: spaces.Discrete = struct.field(pytree_node=False, default=spaces.Discrete(5))
 
     @classmethod
-    def from_dql_state(cls, lower_layer: Env, dql_state, *kwargs):
+    def from_dql_state(cls, lower_layer: Env, dql_state, **kwargs):
         def get_action(comand, rng_key: RNGKey, obs: ObsType) -> ActType:
             qval = dql_state.qval_apply_fn(dql_state.params_qnet, obs)
             return qval[comand].argmax()
 
-        return cls(lower_layer, get_action, dql_state.beta_fn, *kwargs)
+        return cls(lower_layer, get_action, dql_state.beta_fn, **kwargs)
 
     @jax.jit
     def reset(self, rng_key: RNGKey):
