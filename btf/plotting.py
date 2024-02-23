@@ -5,10 +5,12 @@ import jax
 from frozen_lake import FrozenLake, EnvState, ObsType, ActType
 
 
-def render(env: FrozenLake, state: EnvState, hold: bool = False):
+def render(env: FrozenLake, state: EnvState | None = None, hold: bool = False):
     if not hold:
         rows, cols = env.frozen.shape
         plt.figure(figsize=(cols, rows), dpi=60)
+
+    state = state or env.reset(jax.random.PRNGKey(0))[0]
     plt.xticks([])
     plt.yticks([])
     # plt the map
