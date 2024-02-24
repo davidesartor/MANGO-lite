@@ -13,7 +13,6 @@ import utils
 class DQLTrainState(struct.PyTreeNode):
     params_qnet: optax.Params
     params_qnet_targ: optax.Params
-    replay_buffer: utils.CircularBuffer
     opt_state: optax.OptState
 
     qval_apply_fn: Callable = struct.field(pytree_node=False)
@@ -24,29 +23,17 @@ class DQLTrainState(struct.PyTreeNode):
     step: int = 0
 
     @classmethod
-    def create(
-        cls,
-        rng_key: RNGKey,
-        qnet: nn.Module,
-        env: Env,
-        *,
-        lr=3e-4,
-        replay_capacity=2**20,
-        **kwargs
-    ):
-        rng_roll, rng_qnet, rng_qnet_targ = jax.random.split(rng_key, 3)
-        sample_trans = jax.tree_map(lambda x: x[0], utils.random_rollout(env, rng_roll, 2))
+    def create(cls, rng_key: RNGKey, qnet: nn.Module, env: Env, *, lr=3e-4, **kwargs):
+        rng_env, rng_qnet, rng_qnet_targ = jax.random.split(rng_key, 3)
+        env_state, sample_obs = env.reset(rng_env)
 
-        params_qnet = qnet.init(rng_qnet, sample_trans.obs)
-        params_qnet_targ = qnet.init(rng_qnet_targ, sample_trans.obs)
+        params_qnet = qnet.init(rng_qnet, sample_obs)
+        params_qnet_targ = qnet.init(rng_qnet_targ, sample_obs)
 
         optimizer = optax.adam(lr)
         opt_state = optimizer.init(params_qnet)
 
-        replay_buffer = utils.CircularBuffer.create(sample_trans, capacity=replay_capacity)
-        return cls(
-            params_qnet, params_qnet_targ, replay_buffer, opt_state, qnet.apply, optimizer, **kwargs
-        )
+        return cls(params_qnet, params_qnet_targ, opt_state, qnet.apply, optimizer, **kwargs)
 
     @jax.jit
     def temporal_difference(
@@ -61,13 +48,6 @@ class DQLTrainState(struct.PyTreeNode):
         qnext = jax.lax.select(transition.done, 0.0, qnext.max())
         td = qselected - (transition.reward + self.td_discount * qnext)
         return td
-
-    def process_transitions(self, transitions: Transition) -> Transition:
-        return transitions
-
-    @partial(jax.jit, donate_argnames=("self",))
-    def update_replay(self, transitions: Transition):
-        return self.replace(replay_buffer=self.replay_buffer.extend(transitions))
 
     @partial(jax.jit, donate_argnames=("self",))
     def update_params(self, transitions: Transition):
@@ -100,7 +80,7 @@ class DQLTrainState(struct.PyTreeNode):
             qvals = self.qval_apply_fn(self.params_qnet, obs)
             return qvals.argmax()
 
-        return utils.rollout(greedy_action, env, rng_key, steps)
+        return utils.rollout(greedy_action, env, rng_key, steps, pbar_desc="Greedy Rollout")
 
 
 class MultiDQLTrainState(DQLTrainState):
@@ -125,12 +105,13 @@ class MultiDQLTrainState(DQLTrainState):
         td = qselected - (transition.reward + self.td_discount * qnext)
         return td
 
-    @jax.jit
-    def process_transitions(self, transitions: Transition) -> Transition:
-        return transitions.replace(
+    @partial(jax.jit, donate_argnames=("self",))
+    def update_params(self, transitions: Transition):
+        transitions = transitions.replace(
             reward=jax.vmap(self.reward_fn)(transitions),
             done=jax.vmap(self.beta_fn)(transitions),
         )
+        return super().update_params(transitions)
 
     @partial(jax.jit, static_argnames=("steps", "task_id"))
     def greedy_rollout(self, env: Env, rng_key: RNGKey, steps: int, task_id=-1):
@@ -138,4 +119,4 @@ class MultiDQLTrainState(DQLTrainState):
             qvals = self.qval_apply_fn(self.params_qnet, obs)
             return qvals[task_id].argmax()
 
-        return utils.rollout(greedy_action, env, rng_key, steps)
+        return utils.rollout(greedy_action, env, rng_key, steps, pbar_desc="Greedy Rollout")
