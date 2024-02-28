@@ -2,7 +2,7 @@ from typing import Any, Optional
 import torch
 from mango.policies.dqnet import DQNetPolicy
 from mango.environments import frozen_lake
-from mango.actions import grid2D
+from mango.actions import grid2D, grid2D_abstractions
 from mango import Mango, Agent
 
 
