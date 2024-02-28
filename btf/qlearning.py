@@ -23,7 +23,7 @@ class DQLTrainState(struct.PyTreeNode):
     step: int = 0
 
     @classmethod
-    def create(cls, rng_key: RNGKey, qnet: nn.Module, env: Env, *, lr=3e-4, **kwargs):
+    def create(cls, rng_key: RNGKey, qnet: nn.Module, env: Env, *, lr=1e-4, **kwargs):
         rng_env, rng_qnet, rng_qnet_targ = jax.random.split(rng_key, 3)
         env_state, sample_obs = env.reset(rng_env)
 
