@@ -7,6 +7,7 @@ from mango.protocols import AbstractActions, ObsType, ActType, Transition
 from mango import spaces
 from copy import deepcopy
 import numpy.typing as npt
+import torch
 
 
 class Actions(IntEnum):
