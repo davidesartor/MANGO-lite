@@ -7,7 +7,9 @@ from mango.protocols import AbstractActions, ObsType, ActType, Transition
 from mango import spaces
 from copy import deepcopy
 import numpy.typing as npt
+from mango.utils import is_traversable
 import torch
+from dataclasses import field
 
 
 class Actions(IntEnum):
@@ -27,7 +29,7 @@ class Actions(IntEnum):
         }[self]
 
 
-@dataclass(eq=False, slots=True, frozen=True, repr=True)
+@dataclass(eq=False, slots=True, repr=True)
 class SubGridMovement(AbstractActions):
     cell_shape: tuple[int, int]
     grid_shape: tuple[int, int]
@@ -38,6 +40,7 @@ class SubGridMovement(AbstractActions):
     failure_reward: float = -0.75
     step_reward: float = -0.0
     termination_reward: float = +0.25
+    edges: npt.NDArray[np.int32] = field(default=None)
 
     action_space: ClassVar = spaces.Discrete(len(Actions))
 
@@ -92,7 +95,7 @@ class SubGridMovement(AbstractActions):
         self.edges = self.abstract_edges(obs)
     
     def full_abstraction(self, obs: ObsType) -> npt.NDArray[np.int32]:
-        agent_pos = self.abstract(obs)
+        agent_pos = self.abstract_agent(obs)
         gift_pos = self.abstract_gift(obs)
         if self.edges is None:
             self.set_up_edges(obs)
@@ -153,7 +156,7 @@ class SubGridMovement(AbstractActions):
         padded_obs[1, :, [0,-1]] = 1
         padded_obs[1, [0,-1], :] = 1
 
-        y, x = self.abstract(obs)
+        y, x = self.abstract_agent(obs)
         big_x, big_y = x//2, y//2
         y_min_padd = big_y * 2*2
         y_max_padd = (big_y+1) * 2*2+1
