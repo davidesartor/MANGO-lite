@@ -27,12 +27,19 @@ class Qnet(nn.Module):
 
 class MultiTaskQnet(nn.Module):
     n_actions: int
-    n_comands: int = 1
+    n_comands: int
+    map_shape: tuple[int, int]
+    cell_shape: tuple[int, int]
 
     @nn.compact
     def __call__(self, x):
-        x = jnp.stack([MLP(self.n_actions)(x) for _ in range(self.n_comands)], axis=0)
-        return x
+        agent_pos, goal_pos = x
+        x = jnp.zeros((*self.map_shape, 2))
+        x = x.at[agent_pos[0], agent_pos[1], 0].set(1)
+        x = x.at[goal_pos[0], goal_pos[1], 1].set(1)
+
+        # x = jnp.stack([MLP(self.n_actions)(x) for _ in range(self.n_comands)], axis=0)
+        # return x
 
         MultiMLP = nn.vmap(
             MLP,

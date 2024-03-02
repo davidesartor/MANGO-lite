@@ -28,16 +28,20 @@ class Transition(struct.PyTreeNode):
 
 class Env(Protocol):
     @property
-    def action_space(self) -> spaces.Discrete: ...
+    def action_space(self) -> spaces.Discrete:
+        ...
 
-    def reset(self, rng_key: RNGKey) -> tuple[EnvState, ObsType]: ...
+    def reset(self, rng_key: RNGKey) -> tuple[EnvState, ObsType]:
+        ...
 
     def step(
         self, state: EnvState, rng_key: RNGKey, action: ActType
-    ) -> tuple[EnvState, ObsType, float, bool, dict]: ...
+    ) -> tuple[EnvState, ObsType, float, bool, dict]:
+        ...
 
     @jax.jit
-    def get_obs(self, rng_key: RNGKey, state: EnvState) -> ObsType: ...
+    def get_obs(self, rng_key: RNGKey, state: EnvState) -> ObsType:
+        ...
 
 
 class FrozenLake(struct.PyTreeNode):
@@ -95,6 +99,8 @@ class FrozenLake(struct.PyTreeNode):
 
     @jax.jit
     def get_obs(self, rng_key: RNGKey, state: EnvState) -> ObsType:
+        return jnp.stack([state.agent_pos, state.goal_pos], axis=0)
+
         obs = jnp.zeros((*self.frozen.shape, 2))
         obs = obs.at[state.agent_pos[0], state.agent_pos[1], 0].set(1)
         obs = obs.at[state.goal_pos[0], state.goal_pos[1], 1].set(1)

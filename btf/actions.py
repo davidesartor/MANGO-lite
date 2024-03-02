@@ -4,10 +4,11 @@ from frozen_lake import Transition, ObsType
 
 
 def grid_coord(obs: ObsType, cell_scale: int) -> jax.Array:
-    row, col, cha = obs.shape
-    agent_idx = obs[:, :, 0].argmax()
-    coord = jnp.array(divmod(agent_idx, col))
-    return coord // 2**cell_scale
+    # row, col, cha = obs.shape
+    # agent_idx = obs[:, :, 0].argmax()
+    # agent_coord = jnp.array(divmod(agent_idx, col))
+    agent_coord = obs[0]
+    return agent_coord // 2**cell_scale
 
 
 def get_beta_fn(cell_scale: int):
