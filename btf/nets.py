@@ -1,3 +1,4 @@
+from typing import Sequence
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
@@ -5,13 +6,14 @@ from flax import linen as nn
 
 class MLP(nn.Module):
     out: int
-    hidden: int = 512
+    hidden: Sequence[int] = (512,)
 
     @nn.compact
     def __call__(self, x):
         x = x.flatten()
-        x = nn.Dense(self.hidden)(x)
-        x = nn.gelu(x)
+        for h in self.hidden:
+            x = nn.Dense(h)(x)
+            x = nn.gelu(x)
         x = nn.Dense(self.out)(x)
         return x
 
@@ -30,6 +32,7 @@ class MultiTaskQnet(nn.Module):
     n_comands: int
     map_shape: tuple[int, int]
     cell_shape: tuple[int, int]
+    hidden: Sequence[int] = (512,)
 
     @nn.compact
     def __call__(self, x):
@@ -48,5 +51,5 @@ class MultiTaskQnet(nn.Module):
             split_rngs={"params": True},
             axis_size=self.n_comands,
         )
-        x = MultiMLP(self.n_actions)(x)
+        x = MultiMLP(self.n_actions, self.hidden)(x)
         return x

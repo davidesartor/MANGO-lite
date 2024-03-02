@@ -19,6 +19,7 @@ def rollout(
 
     def scan_compatible_step(carry, rng_key: RNGKey):
         env_state, obs = host_callback.id_tap(lambda a, t: pbar.update(1), carry)
+
         rng_action, rng_step, rng_reset = jax.random.split(rng_key, 3)
         action = get_action_fn(rng_action, obs)
         next_env_state, next_obs, reward, done, info = env.step(env_state, rng_step, action)
