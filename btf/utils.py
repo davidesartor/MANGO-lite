@@ -15,10 +15,11 @@ def rollout(
     steps: int,
     pbar_desc: str = "Rollout",
 ):
-    pbar = tqdm(total=steps, desc=pbar_desc)
+    # pbar = tqdm(total=steps, desc=pbar_desc)
 
     def scan_compatible_step(carry, rng_key: RNGKey):
-        env_state, obs = host_callback.id_tap(lambda a, t: pbar.update(1), carry)
+        env_state, obs = carry
+        # env_state, obs = host_callback.id_tap(lambda a, t: pbar.update(1), carry)
 
         rng_action, rng_step, rng_reset = jax.random.split(rng_key, 3)
         action = get_action_fn(rng_action, obs)
