@@ -44,9 +44,13 @@ class DQLTrainState(struct.PyTreeNode):
     ) -> jax.Array:
         qstart = self.qval_apply_fn(params_qnet, transition.obs)
         qselected = qstart[transition.action]
+
         qnext = self.qval_apply_fn(params_qnet_targ, transition.next_obs)
-        qnext = jax.lax.select(transition.done, 0.0, qnext.max())
-        td = qselected - (transition.reward + self.td_discount * qnext)
+        # best_action = self.qval_apply_fn(params_qnet, transition.next_obs).argmax() # double DQL
+        best_action = qnext.argmax()  # DQL
+        qnext_best = qnext[best_action]
+
+        td = qselected - (transition.reward + self.td_discount * qnext_best)
         return td
 
     @partial(jax.jit, donate_argnames=("self",))
