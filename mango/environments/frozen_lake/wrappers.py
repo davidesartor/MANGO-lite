@@ -155,3 +155,41 @@ class RenderObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     def observation(self, observation: int) -> npt.NDArray[np.uint8]:
         render: npt.NDArray[np.uint8] = self.unwrapped._render_gui(mode="rgb_array")  # type: ignore
         return render
+    
+    
+class PaddedOneHotTensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
+    char2int = {b"S": 1, b"F": 1, b"H": 2, b"G": 3}.get
+
+    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, padding: int = 1):
+        super().__init__(env)
+        self.padding = padding
+
+        map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
+        if self.unwrapped.fail_on_out_of_bounds:
+            map_shape = (map_shape[0] - 2, map_shape[1] - 2)
+        self.observation_space = spaces.Box(low=0, high=1, shape=(3, *map_shape), dtype=np.uint8)
+
+    def observation(self, observation: int) -> npt.NDArray[np.uint8]:
+        map = [[self.char2int(el) for el in list(row)] for row in self.unwrapped.desc]
+        row, col = (
+            int(self.unwrapped.s) // self.unwrapped.ncol,
+            int(self.unwrapped.s) % self.unwrapped.ncol,
+        )
+        map[row][col] = 0
+        map = np.array(map, dtype=np.uint8)
+
+        if self.padding > 0:
+            pad_width = ((0, 0), (self.padding, self.padding), (self.padding, self.padding))
+            map = np.pad(map, pad_width, constant_values=2)
+
+        one_hot_map = np.zeros((3, *map.shape), dtype=np.uint8)
+        Y, X = np.indices(map.shape)
+        one_hot_map[map, Y, X] = 1
+
+        if self.unwrapped.fail_on_out_of_bounds:
+            one_hot_map = one_hot_map[:, 1:-1, 1:-1]
+
+        return one_hot_map
+
+
+

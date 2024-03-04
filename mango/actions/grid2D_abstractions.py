@@ -13,11 +13,29 @@ from mango.utils import is_traversable
 import torch
 from copy import deepcopy
 
+class Actions(IntEnum):
+    LEFT = 0
+    DOWN = 1
+    RIGHT = 2
+    UP = 3
+    TASK = 4
+
+    def to_delta(self) -> tuple[int, int]:
+        return {
+            Actions.LEFT: (0, -1),
+            Actions.DOWN: (1, 0),
+            Actions.RIGHT: (0, 1),
+            Actions.UP: (-1, 0),
+            Actions.TASK: (0, 0),
+        }[self]
+        
 @dataclass(eq=False, slots=True, repr=True)
 class GridMovement:
     cell_shape: tuple[int, int]
     target_delta: tuple[int, int]
     edges: npt.NDArray[np.int32] = field(default=None)
+    
+    action_space: ClassVar = spaces.Discrete(len(Actions))
 
     def abstract(self, obs: ObsType) -> tuple[int, int]:
         # assume obs has shape (C, Y, X) and the agent pos in 1hot encoded in channel 0
@@ -33,7 +51,7 @@ class GridMovement:
     
     def abstract_edges(self, obs):
         # Unframed observation
-        unframed_obs = deepcopy(obs[:, 1:-1, 1:-1])
+        unframed_obs = deepcopy(obs)
         # Initialize expanded_matrix to store the result
         expanded_matrix = np.zeros((3, (unframed_obs.shape[1]//self.cell_shape[0])*2-1, (unframed_obs.shape[2]//self.cell_shape[1])*2-1), dtype=np.int32)
         for i in range(unframed_obs.shape[1]//self.cell_shape[0]):
@@ -90,7 +108,7 @@ class GridMovement:
             return -0.0  # no action, no reward
 
         if end == target:
-            return 0.5 if transition.terminated else 1.0
+            return 1.0
         else:
             return -1.0
 

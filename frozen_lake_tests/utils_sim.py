@@ -1,5 +1,6 @@
 from typing import Any, Optional
 import torch
+import os
 from mango.policies.dqnet import DQNetPolicy
 from mango.environments import frozen_lake
 from mango.actions import grid2D, grid2D_abstractions
@@ -47,12 +48,9 @@ def make_env(
 
 def abstract_actions(map_base: int, map_scale: int, cell_scales: list[int], mask_state: bool):
     return [
-        grid2D.SubGridMovement(
+        grid2D_abstractions.GridMovement(
             cell_shape=(map_base**cell_scale, map_base**cell_scale),
-            grid_shape=(map_base**map_scale, map_base**map_scale),
-            agent_channel=0,
-            invalid_channel=1,
-            mask_state=mask_state,
+            target_delta=(map_base**map_scale, map_base**map_scale),
         )
         for cell_scale in cell_scales
     ]
