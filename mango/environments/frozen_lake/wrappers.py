@@ -15,7 +15,7 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         desc=None,
         map_name="4x4",
         is_slippery=False,
-        fail_on_out_of_bounds: bool = True,
+        fail_on_out_of_bounds: bool = False,
         seed: int | None = None,
         **kwargs,
     ):
@@ -106,7 +106,7 @@ class CoordinateObservation(FrozenLakeWrapper, gym.ObservationWrapper):
 class TensorObservation(FrozenLakeWrapper, gym.ObservationWrapper):
     char2int = {b"S": 1, b"F": 1, b"H": 2, b"G": 3}.get
 
-    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = False):
+    def __init__(self, env: CustomFrozenLakeEnv | FrozenLakeWrapper, one_hot: bool = True):
         super().__init__(env)  # type: ignore
         self.one_hot = one_hot
         map_shape = (self.unwrapped.nrow, self.unwrapped.ncol)
