@@ -8,7 +8,7 @@ import numpy as np
 map_base = 2
 map_scale = 2
 p_frozen = 0.4
-one_shot = True
+one_shot = False
 solved_treshold = 99, 100
 
 cuda_idx = 2
