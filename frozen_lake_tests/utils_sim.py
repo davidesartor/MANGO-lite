@@ -10,7 +10,7 @@ from mango import Mango, Agent
 def train_params(
     map_base: int, map_scale: int, p_frozen: float | None, one_shot
 ) -> tuple[int, int, int, int]:
-    max_episodes = 10 ** (map_scale + map_base)
+    max_episodes = 10 ** (1+map_scale+map_base)
     if not one_shot or p_frozen is None:
         max_episodes = max_episodes // 2
     annealing_episodes = max_episodes // 10
@@ -29,8 +29,6 @@ def env_params(
         map_name="RANDOM",
         p=p_frozen,
         shape=(map_base**map_scale, map_base**map_scale),
-        start_pos=[(0, 0)],
-        goal_pos=[(-1, -1)],
         seed=seed,
     )
 
@@ -48,9 +46,9 @@ def make_env(
 
 def abstract_actions(map_base: int, map_scale: int, cell_scales: list[int], mask_state: bool):
     return [
-        grid2D_abstractions.GridMovement(
+        grid2D.SubGridMovement(
             cell_shape=(map_base**cell_scale, map_base**cell_scale),
-            target_delta=(map_base**map_scale, map_base**map_scale),
+            grid_shape=(map_base**map_scale, map_base**map_scale),
         )
         for cell_scale in cell_scales
     ]

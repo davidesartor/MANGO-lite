@@ -84,7 +84,6 @@ class MangoLayer(MangoEnv):
         seen_obs = [self.obs]
         rewards = []
         while True:
-            import ipdb; ipdb.set_trace()
             obs_masked = self.abs_actions.mask(comand, self.obs)
             action = self.policy.get_action(comand, obs_masked, randomness)
             lower_step = self.lower_layer.step(

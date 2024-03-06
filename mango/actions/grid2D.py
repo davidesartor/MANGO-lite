@@ -64,7 +64,7 @@ class SubGridMovement(AbstractActions):
         # Unframed observation
         unframed_obs = deepcopy(obs[:, 1:-1, 1:-1])
         # Initialize expanded_matrix to store the result
-        expanded_matrix = np.zeros((3, (unframed_obs.shape[1]//self.cell_shape[0])*2-1, (unframed_obs.shape[2]//self.cell_shape[1])*2-1), dtype=np.int32)
+        expanded_matrix = np.zeros((3, (unframed_obs.shape[1]//self.cell_shape[0])*2+1, (unframed_obs.shape[2]//self.cell_shape[1])*2+1), dtype=np.int32)
         for i in range(unframed_obs.shape[1]//self.cell_shape[0]):
             for j in range(unframed_obs.shape[2]//self.cell_shape[1]):
                 # Extract 2x2 sub-grid from framed_obs

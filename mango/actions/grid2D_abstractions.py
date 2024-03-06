@@ -53,7 +53,7 @@ class GridMovement:
         # Unframed observation
         unframed_obs = deepcopy(obs)
         # Initialize expanded_matrix to store the result
-        expanded_matrix = np.zeros((3, (unframed_obs.shape[1]//self.cell_shape[0])*2-1, (unframed_obs.shape[2]//self.cell_shape[1])*2-1), dtype=np.int32)
+        expanded_matrix = np.zeros((3, (unframed_obs.shape[1]//self.cell_shape[0])*2+1, (unframed_obs.shape[2]//self.cell_shape[1])*2+1), dtype=np.int32)
         for i in range(unframed_obs.shape[1]//self.cell_shape[0]):
             for j in range(unframed_obs.shape[2]//self.cell_shape[1]):
                 # Extract 2x2 sub-grid from framed_obs
@@ -63,6 +63,7 @@ class GridMovement:
                 if starting_point[0].size == 0:
                     expanded_matrix[1, 2*i, 2*j+1] = 0
                 else:
+                    import ipdb; ipdb.set_trace()
                     # Process lakes channel for horizontal connectivity
                     if j!=unframed_obs.shape[2]//self.cell_shape[1]-1:
                         if torch.any(obs_check[1, :, -1] == 0):
@@ -95,13 +96,13 @@ class GridMovement:
         
 
     def beta(self, trajectory: list[Transition]) -> bool:
-        start = self.abstract(trajectory[0].start_obs)
-        end = self.abstract(trajectory[-1].next_obs)
+        start = self.abstract(trajectory[0])
+        end = self.abstract(trajectory[-1])
         return start != end
 
     def reward(self, trajectory: list[Transition]) -> float:
-        start = self.abstract(trajectory[0].start_obs)
-        end = self.abstract(trajectory[-1].next_obs)
+        start = self.abstract(trajectory[0])
+        end = self.abstract(trajectory[-1])
         target = tuple(s + d for s, d in zip(start, self.target_delta))
 
         if start == target:

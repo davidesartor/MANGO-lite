@@ -64,6 +64,7 @@ def plot_mango_agent_loss_reward(
     plt.plot(smooth(mango.episode_length_log[1::2]), label="evaluation")
     plt.ylim((0, None))
     plt.grid(True)
+    import ipdb; ipdb.set_trace()
     if save_path is not None:
         plt.savefig(save_path, bbox_inches="tight")
     plt.show()

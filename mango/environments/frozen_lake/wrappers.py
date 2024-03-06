@@ -16,7 +16,7 @@ class CustomFrozenLakeEnv(FrozenLakeEnv):
         desc=None,
         map_name="4x4",
         is_slippery=False,
-        fail_on_out_of_bounds: bool = False,
+        fail_on_out_of_bounds: bool = True,
         seed: int | None = None,
         **kwargs,
     ):
