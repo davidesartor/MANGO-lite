@@ -108,6 +108,49 @@ class FrozenLake(struct.PyTreeNode):
         return obs
 
 
+class FrozenRooms(FrozenLake):
+    @classmethod
+    def make_preset(
+        cls,
+        rng_key: RNGKey,
+        map_scale: int,
+        room_scales: tuple[int],
+        random_start=False,
+        random_goal=False,
+    ):
+        frozen = get_rooms_map(map_scale, room_scales)
+        agent_start_prob = jax.lax.select(
+            random_start,
+            (frozen / frozen.sum()).flatten(),
+            jnp.zeros(frozen.size).at[0].set(1.0),
+        )
+        goal_start_prob = jax.lax.select(
+            random_goal,
+            (frozen / frozen.sum()).flatten(),
+            jnp.zeros(frozen.size).at[-1].set(1.0),
+        )
+        return cls(frozen, agent_start_prob, goal_start_prob)
+
+    @partial(jax.jit, donate_argnames=("state",))
+    def step(
+        self, state: EnvState, rng_key: RNGKey, action: ActType
+    ) -> tuple[EnvState, ObsType, jnp.float32, jnp.bool_, dict]:
+        delta = jnp.array([[0, -1], [1, 0], [0, 1], [-1, 0], [0, 0]])[action]
+        new_agent_pos = jnp.clip(state.agent_pos + delta, 0, jnp.array(self.frozen.shape) - 1)
+        state = jax.lax.cond(
+            self.frozen[tuple(new_agent_pos)],
+            lambda: state.replace(agent_pos=new_agent_pos),
+            lambda: state,
+        )
+        reward, done = jax.lax.cond(
+            (state.agent_pos == state.goal_pos).all(),
+            lambda: (1.0, True),
+            lambda: (0.0, False),
+        )
+        obs = self.get_obs(rng_key, state)
+        return state, obs, reward, done, {}
+
+
 @jax.jit
 def connections(chunks: jax.Array):
     """Take an RNGKey of shape (4, x, x)
@@ -190,3 +233,17 @@ def get_preset_map(scale: int) -> jax.Array:
     else:
         raise ValueError(f"no preset map for scale {scale}")
     return jnp.array([[c == "F" for c in row] for row in map])
+
+
+@partial(jax.jit, static_argnames=("map_scale", "room_scales"))
+def get_rooms_map(map_scale: int, room_scales: tuple[int]) -> jax.Array:
+    map = jnp.ones((2**map_scale - 1, 2**map_scale - 1), dtype=bool)
+    for scale in room_scales:
+        for i in range(1, 1 + 2 ** (map_scale - scale) - 1):
+            map = map.at[i * 2**scale - 1, :].set(False)
+            map = map.at[:, i * 2**scale - 1].set(False)
+    for scale in room_scales:
+        for i in range(1, 1 + 2 ** (map_scale - scale)):
+            map = map.at[i * 2**scale - 2 ** (scale - 1) - 1, :].set(True)
+            map = map.at[:, i * 2**scale - 2 ** (scale - 1) - 1].set(True)
+    return map

@@ -39,8 +39,13 @@ class MultiTaskQnet(nn.Module):
         agent_pos, goal_pos = x
         x = jnp.zeros((*self.map_shape, 2))
 
+        # For a fixed map this gives the lower layer abs state as input
         # agent_pos = agent_pos // (jnp.array(self.cell_shape) // 2)
         # goal_pos = goal_pos // (jnp.array(self.cell_shape) // 2)
+
+        # This gives the "masked" state when the map is tiled
+        # agent_pos = agent_pos % jnp.array(self.cell_shape)
+        # goal_pos = goal_pos % jnp.array(self.cell_shape)
 
         x = x.at[agent_pos[0], agent_pos[1], 0].set(1)
         x = x.at[goal_pos[0], goal_pos[1], 1].set(1)
